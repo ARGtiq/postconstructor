@@ -2396,6 +2396,17 @@ window.EmojiPanel=(function(){
 })();
 
 /* ───────────────────────── MODULE: DASHBOARD ───────────────────────── */
+// Мини-превью первого слайда снимка/проекта — используется на дашборде («Недавнее»)
+// и в библиотеке проектов («Мои проекты»), поэтому вынесена в общую область.
+function makeRecentThumb(snapshot){
+  const savedSlides=slides, savedFormat=format, savedCategory=category, savedNumStart=numStart;
+  try{
+    if(!snapshot||!Array.isArray(snapshot.slides)||!snapshot.slides.length) return null;
+    slides=snapshot.slides; format=snapshot.format||'post'; category=snapshot.category||'symptom'; numStart=snapshot.numStart||1;
+    return makeFrame(defSlide(slides[0]),0);
+  }catch(e){ return null; }
+  finally{ slides=savedSlides; format=savedFormat; category=savedCategory; numStart=savedNumStart; }
+}
 window.Dashboard=(function(){
   function renderProject(){
     const total=slides.length;
@@ -2409,15 +2420,6 @@ window.Dashboard=(function(){
     document.getElementById('da-project-status').textContent=pct>=100?'Готово':(pct===0?'Черновик':'В работе');
   }
   const TPL_BG_HEX=BG_HEX;
-  function makeRecentThumb(snapshot){
-    const savedSlides=slides, savedFormat=format, savedCategory=category, savedNumStart=numStart;
-    try{
-      if(!snapshot||!Array.isArray(snapshot.slides)||!snapshot.slides.length) return null;
-      slides=snapshot.slides; format=snapshot.format||'post'; category=snapshot.category||'symptom'; numStart=snapshot.numStart||1;
-      return makeFrame(defSlide(slides[0]),0);
-    }catch(e){ return null; }
-    finally{ slides=savedSlides; format=savedFormat; category=savedCategory; numStart=savedNumStart; }
-  }
   function renderRecentFiles(){
     let arr=[]; try{ arr=JSON.parse(localStorage.getItem(RECENT_KEY)||'[]'); }catch(e){}
     const wrap=document.getElementById('da-recent-list'); const empty=document.getElementById('da-recent-empty');
@@ -2566,23 +2568,36 @@ window.Projects=(function(){
     empty.style.display='none';
     all.forEach(p=>{
       const card=document.createElement('div');
-      card.className='glass-card rounded-2xl p-md flex items-center justify-between gap-3 border border-white/5';
+      card.className='glass-card rounded-2xl p-md flex items-center gap-3 border border-white/5';
       const cnt=slideCount(p);
       const histCount=Array.isArray(p.history)?p.history.length:0;
-      card.innerHTML=`
-        <div class="min-w-0 flex-1 cursor-pointer" data-open="${p.uuid}">
+      // Обложка — превью первого слайда проекта, чтобы было видно, что это за файл
+      const thumbBox=document.createElement('div');
+      thumbBox.className='w-14 h-14 rounded-xl flex-shrink-0 overflow-hidden bg-surface-container-highest relative';
+      const frameEl=makeRecentThumb(p.payload);
+      if(frameEl){
+        const fS=fmtSize((p.payload&&p.payload.format)||p.format||'post');
+        frameEl.style.transform=`scale(${56/fS.w})`; frameEl.style.transformOrigin='top left';
+        thumbBox.appendChild(frameEl);
+      }else{
+        thumbBox.innerHTML=`<div class="w-full h-full flex items-center justify-center"><span class="material-symbols-outlined text-secondary text-xl">draft</span></div>`;
+      }
+      const info=document.createElement('div');
+      info.className='min-w-0 flex-1 cursor-pointer'; info.dataset.open=p.uuid;
+      info.innerHTML=`
           <h3 class="font-headline-md text-base truncate text-on-surface flex items-center gap-1.5">
             <span class="truncate">${esc(p.title||'Без названия')}</span>
             ${p.isAuto?'<span class="shrink-0 text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-primary/15 text-primary font-label-sm">авто</span>':''}
           </h3>
           <p class="text-on-surface-variant font-label-sm truncate">${FMT_RU[p.format]||p.format||''} · ${CAT_RU[p.category]||p.category||''} · ${cnt} сл.</p>
-          <p class="text-on-surface-variant text-[11px] opacity-70">${fmtDate(p.updated_at)}${histCount?' · '+histCount+' верс.':''}</p>
-        </div>
-        <div class="flex gap-1 shrink-0">
+          <p class="text-on-surface-variant text-[11px] opacity-70">${fmtDate(p.updated_at)}${histCount?' · '+histCount+' верс.':''}</p>`;
+      const actions=document.createElement('div');
+      actions.className='flex gap-1 shrink-0';
+      actions.innerHTML=`
           ${histCount?`<button data-history="${p.uuid}" title="История версий" class="p-2 rounded-full glass-card text-on-surface-variant hover:opacity-80 active:scale-95"><span class="material-symbols-outlined text-[18px]">history</span></button>`:''}
           <button data-rename="${p.uuid}" title="Переименовать" class="p-2 rounded-full glass-card text-on-surface-variant hover:opacity-80 active:scale-95"><span class="material-symbols-outlined text-[18px]">edit</span></button>
-          <button data-del="${p.uuid}" title="Удалить" class="p-2 rounded-full glass-card text-error hover:opacity-80 active:scale-95"><span class="material-symbols-outlined text-[18px]">delete</span></button>
-        </div>`;
+          <button data-del="${p.uuid}" title="Удалить" class="p-2 rounded-full glass-card text-error hover:opacity-80 active:scale-95"><span class="material-symbols-outlined text-[18px]">delete</span></button>`;
+      card.append(thumbBox,info,actions);
       list.appendChild(card);
     });
   }
