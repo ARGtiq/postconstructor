@@ -80,6 +80,8 @@ html.theme-light .glass-input{background:#ffffff !important;color:#2b2620 !impor
 html.theme-light .modal-field{background:#ffffff !important;color:#2b2620 !important;border-color:rgba(0,0,0,.15) !important}
 html.theme-light .imp-textarea{background:#ffffff !important;color:#2b2620 !important;border-color:rgba(0,0,0,.12) !important}
 html.theme-light .btn-glass{color:#2b2620 !important;border-color:rgba(0,0,0,.15) !important}
+html.theme-light .cal-cell{color:#5a5548 !important}
+html.theme-light .cal-cell.other-month{color:#5a5548 !important}
 html.theme-light .chip-btn{background:rgba(0,0,0,.05) !important;color:#6b6355 !important;border-color:rgba(0,0,0,.1) !important}
 html.theme-light .tab-btn{color:#8a8175 !important}
 html.theme-light .tab-btn.active{color:var(--accent) !important}
@@ -128,6 +130,7 @@ html.theme-ios .opt-btn{color:#3a3a3c !important}
 html.theme-ios .opt-btn.active{background:#1c1c1e !important;color:#fff !important}
 html.theme-ios .pattern-btn{background:rgba(60,60,67,.06) !important;border-color:rgba(60,60,67,.12) !important;color:#3a3a3c !important}
 html.theme-ios .btn-glass{color:#1c1c1e !important;border-color:rgba(60,60,67,.15) !important}
+html.theme-ios .cal-cell{color:#3a3a3c !important}
 html.theme-ios .pattern-btn.active{color:var(--accent) !important;border-color:var(--accent) !important}
 html.theme-ios .emoji-cat-btn{background:rgba(60,60,67,.08) !important;color:#3a3a3c !important}
 html.theme-ios #bottom-nav,html.theme-ios #editor-subnav{background:rgba(255,255,255,.55) !important;border-color:rgba(255,255,255,.6) !important;backdrop-filter:blur(30px) saturate(200%);box-shadow:0 8px 32px rgba(0,0,0,.12)}
@@ -253,6 +256,8 @@ input[type=range]::-webkit-slider-runnable-track{width:100%;height:4px;cursor:po
 .opt-btn{flex:1;padding:8px 0;text-align:center;border-radius:6px;font-size:14px;font-weight:500;color:#c7c8b1}
 .opt-btn.active{background:#131314;color:#e5e2e3;box-shadow:0 1px 4px rgba(0,0,0,.4)}
 .opt-btn.disabled{opacity:.35;pointer-events:none}
+.se-tab.active{background:var(--accent);color:var(--accent-ink)}
+.pr-fmt-btn.active{border-color:var(--accent) !important;background:color-mix(in srgb,var(--accent) 15%,transparent) !important}
 .swatch{width:32px;height:32px;border-radius:9999px;border:2px solid transparent;flex-shrink:0;cursor:pointer}
 .swatch.active{border-color:var(--accent);box-shadow:0 0 10px rgba(212,233,94,.5)}
 .pattern-btn{aspect-ratio:1;border-radius:8px;background:rgba(255,255,255,.08);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.15);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:#c7c8b1}
@@ -370,6 +375,30 @@ input[type=range]::-webkit-slider-runnable-track{width:100%;height:4px;cursor:po
       <div class="space-y-gutter" id="da-sched-list"></div>
       <p id="da-sched-empty" class="text-on-surface-variant font-label-sm text-center py-4" style="display:none">Нет запланированных публикаций</p>
     </section>
+    <!-- Синхронизация через Supabase — в самом низу главной -->
+    <section id="da-sync-box" class="glass-card rounded-2xl p-md space-y-sm">
+      <div id="da-sync-logged-out" class="space-y-sm">
+        <p class="font-label-md text-on-surface">Синхронизация между устройствами</p>
+        <p class="text-on-surface-variant font-label-sm">Войдите по email, чтобы редактировать на компе и телефоне с одной библиотекой.</p>
+        <div class="flex gap-2">
+          <input id="da-sync-email" type="email" placeholder="you@example.com" class="flex-1 bg-surface-container rounded-xl px-3 py-2 text-on-surface font-label-md outline-none border border-white/10 focus:border-primary/50">
+          <button id="da-sync-login-btn" class="px-4 rounded-xl bg-primary text-on-primary font-label-md active:scale-95">Войти</button>
+        </div>
+        <p id="da-sync-login-status" class="text-on-surface-variant text-[11px]"></p>
+      </div>
+      <div id="da-sync-logged-in" class="space-y-sm" style="display:none">
+        <div class="flex items-center justify-between">
+          <p class="font-label-md text-on-surface truncate" id="da-sync-email-label"></p>
+          <button id="da-sync-logout-btn" class="text-error text-[11px] font-label-sm">Выйти</button>
+        </div>
+        <p class="text-on-surface-variant text-[11px] opacity-70">Изменения отправляются автоматически, изменения с других устройств подтягиваются в фоне.</p>
+        <button id="da-sync-now-btn" class="w-full glass-card rounded-xl p-2.5 flex items-center justify-center gap-2 border border-primary/30 hover:border-primary/60 active:scale-[.99]">
+          <span class="material-symbols-outlined text-primary text-[20px]">sync</span>
+          <span class="font-label-md text-on-surface">Обновить сейчас</span>
+        </button>
+        <p id="da-sync-status" class="text-on-surface-variant text-[11px] text-center"></p>
+      </div>
+    </section>
   </main>
 </div>
 
@@ -377,39 +406,25 @@ input[type=range]::-webkit-slider-runnable-track{width:100%;height:4px;cursor:po
 <div class="view" id="view-projects">
   <header class="flex justify-between items-center px-margin pt-base w-full sticky top-0 z-30 bg-background/80 backdrop-blur-md pb-2">
     <h1 class="font-headline-lg-mobile text-headline-lg-mobile font-bold text-on-surface tracking-tight">Проекты</h1>
-    <div class="flex gap-2">
-      <button id="pr-btn-import" title="Импорт библиотеки" class="flex flex-col items-center gap-1 p-2 rounded-xl glass-card text-on-surface-variant hover:opacity-80 active:scale-95 duration-100">
-        <span class="material-symbols-outlined">upload</span><span class="text-[10px] font-label-sm uppercase tracking-tighter">Импорт</span>
-      </button>
-      <input type="file" id="pr-import-file" accept=".json" style="display:none">
-      <button id="pr-btn-export" title="Экспорт библиотеки" class="flex flex-col items-center gap-1 p-2 rounded-xl glass-card text-on-surface-variant hover:opacity-80 active:scale-95 duration-100">
-        <span class="material-symbols-outlined">download</span><span class="text-[10px] font-label-sm uppercase tracking-tighter">Бэкап</span>
-      </button>
-    </div>
   </header>
   <main class="px-margin pt-base space-y-lg pb-32">
-    <!-- Синхронизация через Supabase -->
-    <section id="pr-sync-box" class="glass-card rounded-2xl p-md space-y-sm">
-      <div id="pr-sync-logged-out" class="space-y-sm">
-        <p class="font-label-md text-on-surface">Синхронизация между устройствами</p>
-        <p class="text-on-surface-variant font-label-sm">Войдите по email, чтобы редактировать на компе и телефоне с одной библиотекой.</p>
-        <div class="flex gap-2">
-          <input id="pr-sync-email" type="email" placeholder="you@example.com" class="flex-1 bg-surface-container rounded-xl px-3 py-2 text-on-surface font-label-md outline-none border border-white/10 focus:border-primary/50">
-          <button id="pr-sync-login-btn" class="px-4 rounded-xl bg-primary text-on-primary font-label-md active:scale-95">Войти</button>
-        </div>
-        <p id="pr-sync-login-status" class="text-on-surface-variant text-[11px]"></p>
-      </div>
-      <div id="pr-sync-logged-in" class="space-y-sm" style="display:none">
-        <div class="flex items-center justify-between">
-          <p class="font-label-md text-on-surface truncate" id="pr-sync-email-label"></p>
-          <button id="pr-sync-logout-btn" class="text-error text-[11px] font-label-sm">Выйти</button>
-        </div>
-        <p class="text-on-surface-variant text-[11px] opacity-70">Изменения отправляются автоматически, изменения с других устройств подтягиваются в фоне.</p>
-        <button id="pr-sync-now-btn" class="w-full glass-card rounded-xl p-2.5 flex items-center justify-center gap-2 border border-primary/30 hover:border-primary/60 active:scale-[.99]">
-          <span class="material-symbols-outlined text-primary text-[20px]">sync</span>
-          <span class="font-label-md text-on-surface">Обновить сейчас</span>
+    <section class="space-y-sm">
+      <div class="grid grid-cols-3 gap-3" id="pr-format-filter">
+        <button data-fmt-filter="post" class="pr-fmt-btn glass-card rounded-2xl p-4 flex flex-col items-center gap-2 border border-white/5 hover:border-primary/40 transition-colors">
+          <span class="material-symbols-outlined text-3xl text-primary">crop_square</span>
+          <span class="font-label-md text-on-surface">Пост</span>
+          <span class="text-[11px] text-on-surface-variant">1:1</span>
         </button>
-        <p id="pr-sync-status" class="text-on-surface-variant text-[11px] text-center"></p>
+        <button data-fmt-filter="reel" class="pr-fmt-btn glass-card rounded-2xl p-4 flex flex-col items-center gap-2 border border-white/5 hover:border-primary/40 transition-colors">
+          <span class="material-symbols-outlined text-3xl text-tertiary-fixed-dim">smart_display</span>
+          <span class="font-label-md text-on-surface">Рилс</span>
+          <span class="text-[11px] text-on-surface-variant">9:16</span>
+        </button>
+        <button data-fmt-filter="story" class="pr-fmt-btn glass-card rounded-2xl p-4 flex flex-col items-center gap-2 border border-white/5 hover:border-primary/40 transition-colors">
+          <span class="material-symbols-outlined text-3xl text-secondary">crop_portrait</span>
+          <span class="font-label-md text-on-surface">Сторис</span>
+          <span class="text-[11px] text-on-surface-variant">9:16</span>
+        </button>
       </div>
     </section>
     <section class="space-y-sm">
@@ -830,6 +845,8 @@ input[type=range]::-webkit-slider-runnable-track{width:100%;height:4px;cursor:po
     <div class="flex overflow-x-auto gap-gutter pb-4 no-scrollbar -mx-margin px-margin snap-x snap-mandatory" id="pu-thumbs"></div>
     <button id="pu-btn-download-all" class="btn-glass rounded-lg py-sm px-md flex items-center justify-center gap-2 font-label-md text-label-md w-full mt-2 group"><span class="material-symbols-outlined text-tertiary-container group-hover:-translate-y-1 transition-transform" style="font-variation-settings:'FILL' 0,'wght' 300">download</span><span id="pu-btn-download-all-label">Скачать все изображения</span></button>
     <button id="pu-btn-save-project" class="btn-glass rounded-lg py-sm px-md flex items-center justify-center gap-2 font-label-md text-label-md w-full group"><span class="material-symbols-outlined text-primary-container group-hover:scale-110 transition-transform" style="font-variation-settings:'FILL' 0,'wght' 300">bookmark_add</span><span id="pu-btn-save-project-label">Сохранить в библиотеку</span></button>
+    <button id="pu-btn-save-file" class="btn-glass rounded-lg py-sm px-md flex items-center justify-center gap-2 font-label-md text-label-md w-full group"><span class="material-symbols-outlined text-secondary group-hover:scale-110 transition-transform" style="font-variation-settings:'FILL' 0,'wght' 300">save</span>Скачать как файл (JSON/MD/TXT)</button>
+    <button id="pu-btn-schedule" class="btn-glass rounded-lg py-sm px-md flex items-center justify-center gap-2 font-label-md text-label-md w-full group"><span class="material-symbols-outlined text-tertiary-fixed-dim group-hover:scale-110 transition-transform" style="font-variation-settings:'FILL' 0,'wght' 300">event</span>Запланировать публикацию</button>
     <label class="flex items-center gap-2 px-1 py-1 cursor-pointer select-none">
       <input type="checkbox" id="pu-published-check" class="w-5 h-5 rounded accent-primary">
       <span class="font-label-md text-label-md text-on-surface">Выложено</span>
@@ -845,7 +862,22 @@ input[type=range]::-webkit-slider-runnable-track{width:100%;height:4px;cursor:po
     <h1 class="font-headline-lg-mobile text-headline-lg-mobile font-bold text-on-surface tracking-tight">Настройки</h1>
   </header>
   <main class="pt-4 pb-8 px-margin space-y-lg">
+    <nav class="flex items-center gap-1 bg-surface-container rounded-2xl p-1 sticky top-[64px] z-20 mb-2">
+      <button data-settings-tab="appearance" class="se-tab flex-1 flex flex-col items-center gap-0.5 py-2 rounded-xl text-on-surface-variant transition-colors">
+        <span class="material-symbols-outlined text-[20px]">palette</span><span class="text-[10px] font-label-sm">Оформление</span>
+      </button>
+      <button data-settings-tab="data" class="se-tab flex-1 flex flex-col items-center gap-0.5 py-2 rounded-xl text-on-surface-variant transition-colors">
+        <span class="material-symbols-outlined text-[20px]">inventory_2</span><span class="text-[10px] font-label-sm">Данные</span>
+      </button>
+      <button data-settings-tab="sync" class="se-tab flex-1 flex flex-col items-center gap-0.5 py-2 rounded-xl text-on-surface-variant transition-colors">
+        <span class="material-symbols-outlined text-[20px]">sync</span><span class="text-[10px] font-label-sm">Синк</span>
+      </button>
+      <button data-settings-tab="more" class="se-tab flex-1 flex flex-col items-center gap-0.5 py-2 rounded-xl text-on-surface-variant transition-colors">
+        <span class="material-symbols-outlined text-[20px]">tune</span><span class="text-[10px] font-label-sm">Прочее</span>
+      </button>
+    </nav>
 
+    <div data-settings-panel="appearance" class="space-y-lg">
     <section class="flex flex-col gap-4">
       <h2 class="font-headline-md text-headline-md text-on-surface-variant">Внешний вид</h2>
       <div class="flex flex-col gap-2">
@@ -892,7 +924,9 @@ input[type=range]::-webkit-slider-runnable-track{width:100%;height:4px;cursor:po
         </div>
       </div>
     </section>
+    </div>
 
+    <div data-settings-panel="data" class="space-y-lg" style="display:none">
     <section class="flex flex-col gap-4">
       <h2 class="font-headline-md text-headline-md text-on-surface-variant">Управление данными</h2>
       <div class="glass-panel rounded-xl p-4 flex flex-col gap-3">
@@ -918,6 +952,22 @@ input[type=range]::-webkit-slider-runnable-track{width:100%;height:4px;cursor:po
     </section>
 
     <section class="flex flex-col gap-4">
+      <h2 class="font-headline-md text-headline-md text-on-surface-variant">Библиотека проектов</h2>
+      <p class="text-xs text-on-surface-variant opacity-70">В отличие от экспорта выше (один текущий пост), это бэкап <b>всех</b> сохранённых в «Проектах» постов разом — на случай переустановки браузера или переноса на другое устройство без синхронизации.</p>
+      <div class="grid grid-cols-1 gap-3">
+        <button id="se-btn-library-export" class="glass-panel rounded-xl p-4 flex items-center justify-between hover:bg-white/10 transition-colors group">
+          <div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full bg-secondary-container/30 flex items-center justify-center"><span class="material-symbols-outlined text-secondary">archive</span></div><span class="font-body-lg text-body-lg text-on-surface">Бэкап всей библиотеки</span></div>
+          <span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors">chevron_right</span>
+        </button>
+        <button id="se-btn-library-import" class="glass-panel rounded-xl p-4 flex items-center justify-between hover:bg-white/10 transition-colors group">
+          <div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full bg-secondary-container/30 flex items-center justify-center"><span class="material-symbols-outlined text-secondary">unarchive</span></div><span class="font-body-lg text-body-lg text-on-surface">Восстановить библиотеку из бэкапа</span></div>
+          <span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors">chevron_right</span>
+        </button>
+        <input type="file" id="se-library-import-file" accept=".json" style="display:none">
+      </div>
+    </section>
+
+    <section class="flex flex-col gap-4">
       <h2 class="font-headline-md text-headline-md text-on-surface-variant">Быстрая вставка в подпись</h2>
       <p class="text-xs text-on-surface-variant opacity-70 -mt-2">Эти фразы доступны кнопкой «Быстрая вставка» на экране «Структура».</p>
       <div class="glass-panel rounded-xl p-4 flex flex-col gap-2" id="se-quickinsert-list"></div>
@@ -937,7 +987,9 @@ input[type=range]::-webkit-slider-runnable-track{width:100%;height:4px;cursor:po
         <p class="text-xs text-on-surface-variant opacity-60" id="se-tpl-caption-empty" style="display:none">Пока нет сохранённых шаблонов подписи.</p>
       </div>
     </section>
+    </div>
 
+    <div data-settings-panel="sync" class="space-y-lg" style="display:none">
     <section class="flex flex-col gap-4">
       <h2 class="font-headline-md text-headline-md text-on-surface-variant">Синхронизация</h2>
       <div class="glass-panel rounded-xl p-4 flex flex-col gap-3">
@@ -958,7 +1010,9 @@ input[type=range]::-webkit-slider-runnable-track{width:100%;height:4px;cursor:po
         <p class="text-xs text-on-surface-variant opacity-60">После сохранения зайдите в «Проекты» → войдите по email, чтобы синхронизировать библиотеку между устройствами.</p>
       </div>
     </section>
+    </div>
 
+    <div data-settings-panel="more" class="space-y-lg" style="display:none">
     <section class="flex flex-col gap-4">
       <h2 class="font-headline-md text-headline-md text-on-surface-variant">Дополнительно</h2>
       <div class="glass-panel rounded-xl overflow-hidden flex flex-col">
@@ -978,6 +1032,7 @@ input[type=range]::-webkit-slider-runnable-track{width:100%;height:4px;cursor:po
       </div>
       <p id="se-app-version" class="text-center text-on-surface-variant text-[11px] opacity-50 pt-2 pb-4"></p>
     </section>
+    </div>
 
   </main>
 </div>
@@ -1198,7 +1253,7 @@ const CAT_PALETTES={
 /* Версия приложения — показывается внизу Настроек. Бампать вручную при
    каждой значимой правке (следующий за этим сообщением коммит и все
    последующие) — формат MAJOR.MINOR.PATCH, дата для ориентира. */
-const APP_VERSION='1.2.0'; // 2026-07-14 — автосохранение открытого поста в проекты, пошаговая навигация Далее/Назад, фильтр выложено/не выложено, проверка дублей при импорте
+const APP_VERSION='1.3.0'; // 2026-07-14 — вкладки в Настройках, синк тем и быстрых вставок, фикс шрифта интерфейса, планирование из Проектов/Публикации, фильтр по формату
 const CAT_RU={symptom:'Симптом/Диагноз',myth:'Разбор мифа',prevent:'Профилактика/Чеклист',
   habit:'Привычка/Совет',delicate:'Деликатные темы',qa:'Вопрос-ответ',
   personal:'Личное/О враче',review:'Отзыв',oncology:'Онкология'};
@@ -1736,7 +1791,7 @@ const Sync=(()=>{
     stopAutoLoop();
   }
   function notifyStatus(text){
-    if(window.Projects&&window.Projects.onSyncStatus) window.Projects.onSyncStatus(text,lastSyncAt);
+    if(window.Dashboard&&window.Dashboard.onSyncStatus) window.Dashboard.onSyncStatus(text,lastSyncAt);
   }
   // Лениво создаёт/пересоздаёт клиент, если ключи есть и изменились
   function ensureClient(){
@@ -1749,7 +1804,7 @@ const Sync=(()=>{
     client.auth.onAuthStateChange((_evt,session)=>{
       const wasLoggedIn=!!user;
       user=session?session.user:null;
-      if(window.Projects&&window.Projects.onAuthChange) window.Projects.onAuthChange(user);
+      if(window.Dashboard&&window.Dashboard.onAuthChange) window.Dashboard.onAuthChange(user);
       if(user&&!wasLoggedIn){
         // Только что вошли — сразу полный синк и запуск фонового цикла
         syncNow().catch(e=>notifyStatus('Ошибка синхронизации: '+e.message));
@@ -1807,7 +1862,9 @@ const Sync=(()=>{
     {kind:'recent',key:'garipov_recent_files'},
     {kind:'schedule',key:'garipov_mobile_schedule_v1'},
     {kind:'templates_slide',key:'garipov_custom_tpl_v1'},
-    {kind:'templates_caption',key:'garipov_caption_templates_v1'}
+    {kind:'templates_caption',key:'garipov_caption_templates_v1'},
+    {kind:'custom_themes',key:'garipov_custom_themes_v1'},
+    {kind:'quick_insert',key:'garipov_quick_insert_v1'}
   ];
   const BLOB_META_KEY='garipov_sync_blob_meta_v1';
   function _blobMeta(){ try{ return JSON.parse(localStorage.getItem(BLOB_META_KEY)||'{}'); }catch(e){ return {}; } }
@@ -2263,8 +2320,6 @@ document.addEventListener('click',(e)=>{
 });
 document.getElementById('btn-fab-new').onclick=(e)=>{
   showPopoverMenu(e.currentTarget,[
-    {label:'Редактор',icon:'edit',onClick:()=>showView('editor')},
-    {label:'Сохранить',icon:'save',onClick:()=>SaveModal.open()},
     {label:'Запланировать',icon:'event',onClick:()=>QuickSchedule.open()},
     {label:'Отменить',icon:'undo',onClick:()=>tbUndo()},
     {label:'Повторить',icon:'redo',onClick:()=>tbRedo()},
@@ -2618,10 +2673,56 @@ window.Dashboard=(function(){
       if(wrap.classList.contains('open')) document.getElementById('da-tpl-search').focus();
     };
     document.getElementById('da-tpl-search').addEventListener('input',(e)=>renderTemplates(e.target.value));
+    // ── Синхронизация (Supabase) — обработчики вешаем всегда, видимость решает onEnter ──
+    document.getElementById('da-sync-login-btn').onclick=async()=>{
+      const email=document.getElementById('da-sync-email').value.trim();
+      const st=document.getElementById('da-sync-login-status');
+      if(!email){ st.textContent='Введите email.'; return; }
+      st.textContent='Отправляю ссылку…';
+      try{ await Sync.login(email); st.textContent='Ссылка для входа отправлена на '+email+'. Проверьте почту.'; }
+      catch(err){ st.textContent='Ошибка: '+err.message; }
+    };
+    document.getElementById('da-sync-logout-btn').onclick=async()=>{ await Sync.logout(); };
+    document.getElementById('da-sync-now-btn').onclick=async()=>{
+      try{ await Sync.syncNow(); }
+      catch(err){ showSyncStatus('Ошибка: '+err.message); }
+    };
+  }
+  function showSyncStatus(text,ts){
+    const st=document.getElementById('da-sync-status');
+    if(!st) return;
+    if(ts){
+      const time=new Date(ts).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
+      st.textContent=text+' · '+time;
+    }else st.textContent=text;
+  }
+  function reflectAuth(user){
+    if(!Sync.isConfigured()) return;
+    user=user!==undefined?user:Sync.currentUser();
+    const out=document.getElementById('da-sync-logged-out');
+    const inn=document.getElementById('da-sync-logged-in');
+    if(!out||!inn) return;
+    if(user){
+      out.style.display='none'; inn.style.display='block';
+      document.getElementById('da-sync-email-label').textContent=user.email||'';
+    }else{
+      out.style.display='block'; inn.style.display='none';
+    }
   }
   let inited=false;
   return {
-    onEnter(){ if(!inited){ initOnce(); inited=true; } renderTemplates(document.getElementById('da-tpl-search').value); renderSchedule(); renderRecentFiles(); }
+    onEnter(){
+      if(!inited){ initOnce(); inited=true; }
+      renderTemplates(document.getElementById('da-tpl-search').value); renderSchedule(); renderRecentFiles();
+      const box=document.getElementById('da-sync-box');
+      if(box) box.style.display=Sync.isConfigured()?'block':'none';
+      reflectAuth();
+      if(Sync.lastSync()) showSyncStatus('Синхронизировано',Sync.lastSync());
+    },
+    // Вызывается модулем Sync при изменении статуса входа
+    onAuthChange(user){ reflectAuth(user); },
+    // Вызывается модулем Sync на каждое авто- и ручное событие синхронизации
+    onSyncStatus(text,ts){ showSyncStatus(text,ts); }
   };
 })();
 
@@ -2637,7 +2738,7 @@ window.Projects=(function(){
     try{ return (p.payload&&Array.isArray(p.payload.slides))?p.payload.slides.length:0; }catch(e){ return 0; }
   }
   const PREFS_KEY='garipov_projects_prefs_v1';
-  const DEFAULT_PREFS={sort:'updated_desc',group:false,view:'list',filterStatus:'all'};
+  const DEFAULT_PREFS={sort:'updated_desc',group:false,view:'list',filterStatus:'all',filterFormat:'all'};
   function getPrefs(){
     try{ return Object.assign({},DEFAULT_PREFS,JSON.parse(localStorage.getItem(PREFS_KEY)||'{}')); }
     catch(e){ return Object.assign({},DEFAULT_PREFS); }
@@ -2681,11 +2782,26 @@ window.Projects=(function(){
         </h3>
         <p class="text-on-surface-variant text-[11px] opacity-70">${fmtDate(p.updated_at)} · ${cnt} сл.${histCount?' · '+histCount+' верс.':''}</p>`;
     const actions=document.createElement('div');
-    actions.className='flex gap-1 shrink-0';
-    actions.innerHTML=`
-        ${histCount?`<button data-history="${p.uuid}" title="История версий" class="p-2 rounded-full glass-card text-on-surface-variant hover:opacity-80 active:scale-95"><span class="material-symbols-outlined text-[18px]">history</span></button>`:''}
-        <button data-rename="${p.uuid}" title="Переименовать" class="p-2 rounded-full glass-card text-on-surface-variant hover:opacity-80 active:scale-95"><span class="material-symbols-outlined text-[18px]">edit</span></button>
-        <button data-del="${p.uuid}" title="Удалить" class="p-2 rounded-full glass-card text-error hover:opacity-80 active:scale-95"><span class="material-symbols-outlined text-[18px]">delete</span></button>`;
+    actions.className='flex gap-1 shrink-0 items-center';
+    const menuBtn=document.createElement('button');
+    menuBtn.title='Действия';
+    menuBtn.className='p-2 rounded-full glass-card text-on-surface-variant hover:opacity-80 active:scale-95';
+    menuBtn.innerHTML='<span class="material-symbols-outlined text-[18px]">more_vert</span>';
+    menuBtn.onclick=(e)=>{
+      e.stopPropagation();
+      const items=[];
+      if(histCount) items.push({icon:'history',label:'История версий',onClick:()=>openHistory(menuBtn,p.uuid)});
+      items.push({icon:'event',label:'Запланировать',onClick:()=>QuickSchedule.open(p.title||'',p.uuid)});
+      items.push({icon:'edit',label:'Переименовать',onClick:()=>{
+        const name=prompt('Новое название:',p.title||''); if(name===null) return;
+        p.title=name.trim()||p.title; Storage.save(p); render();
+      }});
+      items.push({icon:'delete',label:'Удалить',onClick:()=>{
+        if(confirm('Удалить проект «'+(p.title||'')+'»?')){ Storage.remove(p.uuid); render(); }
+      }});
+      showPopoverMenu(menuBtn,items);
+    };
+    actions.appendChild(menuBtn);
     card.append(thumbBox,info,actions);
     return card;
   }
@@ -2725,6 +2841,7 @@ window.Projects=(function(){
       const items=[];
       const histCount=Array.isArray(p.history)?p.history.length:0;
       if(histCount) items.push({icon:'history',label:'История версий',onClick:()=>openHistory(menuBtn,p.uuid)});
+      items.push({icon:'event',label:'Запланировать',onClick:()=>QuickSchedule.open(p.title||'',p.uuid)});
       items.push({icon:'edit',label:'Переименовать',onClick:()=>{
         const name=prompt('Новое название:',p.title||''); if(name===null) return;
         p.title=name.trim()||p.title; Storage.save(p); render();
@@ -2750,14 +2867,15 @@ window.Projects=(function(){
     list.innerHTML='';
     if(!all.length){ empty.style.display='block'; return; }
     const prefs=getPrefs();
-    const filtered=prefs.filterStatus==='published'?all.filter(p=>p.published)
+    const byStatus=prefs.filterStatus==='published'?all.filter(p=>p.published)
       :prefs.filterStatus==='unpublished'?all.filter(p=>!p.published)
       :all;
+    const filtered=prefs.filterFormat==='all'?byStatus:byStatus.filter(p=>p.format===prefs.filterFormat);
     if(!filtered.length){
       empty.style.display='block';
-      empty.textContent=prefs.filterStatus==='all'
+      empty.textContent=(prefs.filterStatus==='all'&&prefs.filterFormat==='all')
         ?'Пока нет сохранённых проектов — начните пост, он появится тут сам.'
-        :'Нет постов с таким статусом.';
+        :'Нет постов с такими фильтрами.';
       return;
     }
     empty.style.display='none';
@@ -2819,18 +2937,11 @@ window.Projects=(function(){
     if(id) render();
     else alert('Не удалось сохранить (возможно, переполнено хранилище браузера — сделайте бэкап и очистите старые проекты).');
   }
-  function showSyncStatus(text,ts){
-    const st=document.getElementById('pr-sync-status');
-    if(!st) return;
-    if(ts){
-      const time=new Date(ts).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
-      st.textContent=text+' · '+time;
-    }else st.textContent=text;
-  }
   function reflectViewControls(){
     const prefs=getPrefs();
     const sortEl=document.getElementById('pr-sort'); if(sortEl) sortEl.value=prefs.sort;
     const filterEl=document.getElementById('pr-filter-status'); if(filterEl) filterEl.value=prefs.filterStatus;
+    document.querySelectorAll('.pr-fmt-btn').forEach(b=>b.classList.toggle('active',b.dataset.fmtFilter===prefs.filterFormat));
     const groupBtn=document.getElementById('pr-group-toggle');
     if(groupBtn) groupBtn.classList.toggle('bg-primary/15',prefs.group), groupBtn.classList.toggle('text-primary',prefs.group);
     const lBtn=document.getElementById('pr-view-list'), gBtn=document.getElementById('pr-view-grid');
@@ -2840,6 +2951,14 @@ window.Projects=(function(){
     }
   }
   function initOnce(){
+    // ── Фильтр по формату (Пост/Рилс/Сторис) — повторный клик снимает фильтр ──
+    document.querySelectorAll('.pr-fmt-btn').forEach(btn=>{
+      btn.onclick=()=>{
+        const prefs=getPrefs();
+        prefs.filterFormat=prefs.filterFormat===btn.dataset.fmtFilter?'all':btn.dataset.fmtFilter;
+        setPrefs(prefs); reflectViewControls(); render();
+      };
+    });
     // ── Сортировка, фильтр, группировка, вид отображения ──
     document.getElementById('pr-sort').onchange=(e)=>{
       const prefs=getPrefs(); prefs.sort=e.target.value; setPrefs(prefs); render();
@@ -2856,31 +2975,6 @@ window.Projects=(function(){
     document.getElementById('pr-view-grid').onclick=()=>{
       const prefs=getPrefs(); prefs.view='grid'; setPrefs(prefs); reflectViewControls(); render();
     };
-    document.getElementById('pr-btn-export').onclick=()=>{
-      const cnt=Storage.getAll().length;
-      if(!cnt){ alert('Библиотека пуста — нечего экспортировать.'); return; }
-      // На Android с мостом — пишем файл на устройство (уровень 2), иначе скачиваем в браузере
-      if(Storage.hasNative()&&window.DB&&typeof window.DB.createBackup==='function'){
-        const path=window.DB.createBackup();
-        alert(path?('Бэкап сохранён на устройстве:\n'+path):'Не удалось создать бэкап.');
-      }else{
-        dlBlobGlobal(Storage.exportBackup(),`garipov_library_${new Date().toISOString().slice(0,10)}.json`,'application/json');
-      }
-    };
-    document.getElementById('pr-btn-import').onclick=()=>document.getElementById('pr-import-file').click();
-    document.getElementById('pr-import-file').addEventListener('change',(e)=>{
-      const f=e.target.files[0]; if(!f) return;
-      const rd=new FileReader();
-      rd.onload=ev=>{
-        try{
-          const r=Storage.importBackup(ev.target.result);
-          render();
-          alert(`Импорт завершён.\nДобавлено: ${r.added}, обновлено: ${r.updated}, пропущено: ${r.skipped}.`);
-        }catch(err){ alert('Ошибка импорта: '+err.message); }
-        e.target.value='';
-      };
-      rd.readAsText(f,'utf-8');
-    });
     // Делегирование кликов внутри списка
     document.getElementById('pr-list').addEventListener('click',(e)=>{
       const open=e.target.closest('[data-open]');
@@ -2899,20 +2993,6 @@ window.Projects=(function(){
       }
       if(open){ openProject(open.dataset.open); }
     });
-    // ── Синхронизация (Supabase) — обработчики вешаем всегда, видимость решает onEnter ──
-    document.getElementById('pr-sync-login-btn').onclick=async()=>{
-      const email=document.getElementById('pr-sync-email').value.trim();
-      const st=document.getElementById('pr-sync-login-status');
-      if(!email){ st.textContent='Введите email.'; return; }
-      st.textContent='Отправляю ссылку…';
-      try{ await Sync.login(email); st.textContent='Ссылка для входа отправлена на '+email+'. Проверьте почту.'; }
-      catch(err){ st.textContent='Ошибка: '+err.message; }
-    };
-    document.getElementById('pr-sync-logout-btn').onclick=async()=>{ await Sync.logout(); };
-    document.getElementById('pr-sync-now-btn').onclick=async()=>{
-      try{ await Sync.syncNow(); }
-      catch(err){ showSyncStatus('Ошибка: '+err.message); }
-    };
   }
   let inited=false;
   return {
@@ -2920,29 +3000,8 @@ window.Projects=(function(){
       if(!inited){ initOnce(); inited=true; }
       reflectViewControls();
       render();
-      const box=document.getElementById('pr-sync-box');
-      if(box) box.style.display=Sync.isConfigured()?'block':'none';
-      this.reflectAuth();
-      if(Sync.lastSync()) showSyncStatus('Синхронизировано',Sync.lastSync());
     },
-    render,
-    // Вызывается модулем Sync при изменении статуса входа
-    onAuthChange(user){ this.reflectAuth(user); },
-    // Вызывается модулем Sync на каждое авто- и ручное событие синхронизации
-    onSyncStatus(text,ts){ showSyncStatus(text,ts); },
-    reflectAuth(user){
-      if(!Sync.isConfigured()) return;
-      user=user!==undefined?user:Sync.currentUser();
-      const out=document.getElementById('pr-sync-logged-out');
-      const inn=document.getElementById('pr-sync-logged-in');
-      if(!out||!inn) return;
-      if(user){
-        out.style.display='none'; inn.style.display='block';
-        document.getElementById('pr-sync-email-label').textContent=user.email||'';
-      }else{
-        out.style.display='block'; inn.style.display='none';
-      }
-    }
+    render
   };
 })();
 
@@ -4427,6 +4486,12 @@ window.Publish=(function(){
         setTimeout(()=>label.textContent=old,1200);
       }catch(err){ alert(err.message); }
     };
+    document.getElementById('pu-btn-save-file').onclick=()=>{ SaveModal.open(); };
+    document.getElementById('pu-btn-schedule').onclick=()=>{
+      const cur=getCurrentProjectUuid();
+      const p=cur?Storage.get(cur):null;
+      QuickSchedule.open((p&&p.title)||deriveTitleFromSlides(slides,CAT_RU[category]||'Карусель'),cur);
+    };
     document.getElementById('pu-published-check').onchange=(e)=>{
       const cur=getCurrentProjectUuid();
       if(!cur){ e.target.checked=false; alert('Сначала сохраните пост — добавьте хотя бы один слайд.'); return; }
@@ -4548,6 +4613,16 @@ window.Settings=(function(){
     prefs.font=id;
     const f=FONTS.find(x=>x.id===id)||FONTS[0];
     document.body.style.fontFamily=f.css;
+    // Одного inline-стиля на body недостаточно: почти весь текст в интерфейсе
+    // стилизован Tailwind-классами (font-headline-md, font-label-md и т.д.),
+    // которые ЯВНО задают шрифт на самом элементе — такое всегда перебивает
+    // унаследованный от body шрифт, даже без !important. Поэтому перекрываем
+    // сами эти классы через инжектируемый <style>, как и с цветами тем.
+    let styleEl=document.getElementById('custom-font-style');
+    if(!styleEl){ styleEl=document.createElement('style'); styleEl.id='custom-font-style'; document.head.appendChild(styleEl); }
+    const sel=['.font-headline-lg','.font-headline-lg-mobile','.font-body-lg','.font-body-md',
+      '.font-label-md','.font-headline-md','.font-label-sm','.font-display-lg'].join(',');
+    styleEl.textContent=`${sel}{font-family:${f.css} !important}`;
     renderFontList();
     savePrefs();
   }
@@ -4614,6 +4689,7 @@ html.${id} .theme-card.active{background:${hoverBg} !important;border-color:var(
 html.${id} .glass-input,html.${id} .modal-field,html.${id} .imp-textarea{background:${inputBg} !important;color:${textMain} !important;border-color:${border} !important}
 html.${id} .chip-btn{background:${chipBg} !important;color:${textVar} !important;border-color:${cardBorder} !important;${glass?`backdrop-filter:blur(12px) saturate(160%);`:''}}
 html.${id} .btn-glass{color:${textMain} !important;border-color:${cardBorder} !important}
+html.${id} .cal-cell{color:${textVar} !important}
 html.${id} .tab-btn{color:${textVar} !important}
 html.${id} .tab-btn.active{color:var(--accent) !important}
 html.${id} .opt-btn{color:${textVar} !important}
@@ -4899,7 +4975,18 @@ html.${id} #tpl-modal>div,html.${id} #dl-result-modal>div,html.${id} #dl-all-cho
       });
     }
   }
+  const SETTINGS_TAB_KEY='garipov_settings_tab_v1';
+  function switchSettingsTab(tab){
+    document.querySelectorAll('.se-tab').forEach(b=>b.classList.toggle('active',b.dataset.settingsTab===tab));
+    document.querySelectorAll('[data-settings-panel]').forEach(p=>p.style.display=p.dataset.settingsPanel===tab?'':'none');
+    try{ localStorage.setItem(SETTINGS_TAB_KEY,tab); }catch(e){}
+  }
   function initOnce(){
+    document.querySelectorAll('.se-tab').forEach(btn=>{
+      btn.onclick=()=>switchSettingsTab(btn.dataset.settingsTab);
+    });
+    let savedTab='appearance'; try{ savedTab=localStorage.getItem(SETTINGS_TAB_KEY)||'appearance'; }catch(e){}
+    switchSettingsTab(savedTab);
     document.querySelectorAll('.theme-card[data-theme]').forEach(btn=>{
       btn.addEventListener('click',()=>applyTheme(btn.dataset.theme));
     });
@@ -4935,6 +5022,30 @@ html.${id} #tpl-modal>div,html.${id} #dl-result-modal>div,html.${id} #dl-all-cho
     document.getElementById('se-btn-import').onclick=()=>document.getElementById('se-import-file').click();
     document.getElementById('se-import-file').addEventListener('change',(e)=>{
       const f=e.target.files[0]; if(f) importProject(f); e.target.value='';
+    });
+    document.getElementById('se-btn-library-export').onclick=()=>{
+      const cnt=Storage.getAll().length;
+      if(!cnt){ alert('Библиотека пуста — нечего экспортировать.'); return; }
+      // На Android с мостом — пишем файл на устройство (уровень 2), иначе скачиваем в браузере
+      if(Storage.hasNative()&&window.DB&&typeof window.DB.createBackup==='function'){
+        const path=window.DB.createBackup();
+        alert(path?('Бэкап сохранён на устройстве:\n'+path):'Не удалось создать бэкап.');
+      }else{
+        dlBlobGlobal(Storage.exportBackup(),`garipov_library_${new Date().toISOString().slice(0,10)}.json`,'application/json');
+      }
+    };
+    document.getElementById('se-btn-library-import').onclick=()=>document.getElementById('se-library-import-file').click();
+    document.getElementById('se-library-import-file').addEventListener('change',(e)=>{
+      const f=e.target.files[0]; if(!f) return;
+      const rd=new FileReader();
+      rd.onload=ev=>{
+        try{
+          const r=Storage.importBackup(ev.target.result);
+          alert(`Импорт завершён.\nДобавлено: ${r.added}, обновлено: ${r.updated}, пропущено: ${r.skipped}.`);
+        }catch(err){ alert('Ошибка импорта: '+err.message); }
+        e.target.value='';
+      };
+      rd.readAsText(f,'utf-8');
     });
     document.getElementById('se-btn-notify').onclick=toggleNotify;
     document.getElementById('se-btn-bug').onclick=collectBugReport;
@@ -5092,12 +5203,14 @@ window.SaveModal=(function(){
 })();
 
 window.QuickSchedule=(function(){
+  let _linkedProjectUuid=null;
   function loadSchedule(){ try{ return JSON.parse(localStorage.getItem(SCHED_KEY)||'[]'); }catch(e){ return []; } }
   function saveSchedule(list){ try{ localStorage.setItem(SCHED_KEY,JSON.stringify(list)); }catch(e){} }
-  function open(){
+  function open(prefillTitle,projectUuid){
     const d=new Date();
-    document.getElementById('qs-title').value='';
+    document.getElementById('qs-title').value=prefillTitle||'';
     document.getElementById('qs-date').value=d.toISOString().slice(0,10);
+    _linkedProjectUuid=projectUuid||null;
     document.getElementById('qs-modal').classList.remove('hidden');
     document.getElementById('qs-modal').classList.add('flex');
     document.getElementById('qs-title').focus();
@@ -5114,7 +5227,9 @@ window.QuickSchedule=(function(){
     const dt=new Date(dateStr+'T09:00:00');
     if(isNaN(dt.getTime())) return;
     const list=loadSchedule();
-    list.push({title,date:dt.toISOString()});
+    const entry={title,date:dt.toISOString()};
+    if(_linkedProjectUuid) entry.projectUuid=_linkedProjectUuid;
+    list.push(entry);
     saveSchedule(list);
     close();
     if(window.Dashboard&&window.Dashboard.onEnter&&document.getElementById('view-dashboard').classList.contains('active')) window.Dashboard.onEnter();
