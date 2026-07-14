@@ -368,9 +368,9 @@ input[type=range]::-webkit-slider-runnable-track{width:100%;height:4px;cursor:po
       </a>
     </section>
     <section class="space-y-sm">
-      <h2 class="font-headline-md text-headline-md">Недавние файлы</h2>
+      <h2 class="font-headline-md text-headline-md">Недавнее</h2>
       <div class="space-y-sm" id="da-recent-list"></div>
-      <p id="da-recent-empty" class="text-on-surface-variant font-label-sm text-center py-4" style="display:none">Пока нет сохранённых или открытых файлов</p>
+      <p id="da-recent-empty" class="text-on-surface-variant font-label-sm text-center py-4" style="display:none">Пока ничего не открывалось, не создавалось и не редактировалось</p>
     </section>
     <section class="space-y-sm">
       <div class="flex items-center justify-between"><h2 class="font-headline-md text-headline-md">Шаблоны</h2><span class="text-on-surface-variant font-label-sm">Тап — новая карусель</span></div>
@@ -1467,25 +1467,29 @@ function importTXT(text){
   return true;
 }
 const RECENT_KEY='garipov_recent_files';
-function addRecentFile(name,type){
+// Универсальное событие «Недавнее»: что произошло (открыт/создан/изменён/экспортирован),
+// с чем (название) и полный снимок содержимого — не ссылка на файл, а сами данные,
+// чтобы карточку можно было открыть даже если исходного файла на диске уже нет.
+function addRecentEvent(action,title,payload){
   let arr=[];
   try{ arr=JSON.parse(localStorage.getItem(RECENT_KEY)||'[]'); }catch(e){}
-  arr=arr.filter(r=>r.name!==name);
-  const full=buildFullExport();
-  arr.unshift({name,type,date:new Date().toISOString(),snapshot:full});
+  arr=arr.filter(r=>!(r.title===title&&r.action===action)); // не плодим дубли одного и того же события подряд
+  arr.unshift({action,title:title||'Без названия',date:new Date().toISOString(),snapshot:payload});
   try{
     localStorage.setItem(RECENT_KEY,JSON.stringify(arr.slice(0,8)));
   }catch(e){
     // Переполнение хранилища (обычно из-за встроенных изображений) — сохраняем без картинок,
-    // чтобы запись в «Недавних файлах» не терялась.
+    // чтобы запись в «Недавнем» не терялась.
     try{
-      const light=JSON.parse(JSON.stringify(full));
+      const light=JSON.parse(JSON.stringify(payload||{}));
       light.slides=(light.slides||[]).map(s=>({...s,img:null}));
-      arr[0]={name,type,date:new Date().toISOString(),snapshot:light,imagesStripped:true};
+      arr[0]={action,title:title||'Без названия',date:new Date().toISOString(),snapshot:light,imagesStripped:true};
       localStorage.setItem(RECENT_KEY,JSON.stringify(arr.slice(0,8)));
     }catch(e2){}
   }
 }
+// Совместимость со старыми точками вызова (экспорт файла) — тип события 'export'
+function addRecentFile(name,type){ addRecentEvent('export',name,buildFullExport()); }
 function dlBlobGlobal(content,name,mime){
   addRecentFile(name,(name.split('.').pop()||'json'));
   const b=new Blob([content],{type:mime});
@@ -1649,12 +1653,16 @@ function getCurrentProjectUuid(){ try{ return localStorage.getItem(CUR_PROJECT_K
 function setCurrentProjectUuid(id){ try{ id?localStorage.setItem(CUR_PROJECT_KEY,id):localStorage.removeItem(CUR_PROJECT_KEY); }catch(e){} }
 function saveCurrentAsProject(name,existingUuid){
   const payload=buildFullExport();
+  const finalTitle=(name&&name.trim())||CAT_RU[category]||'Карусель';
   const id=Storage.save({
     uuid:existingUuid||undefined,
-    title:(name&&name.trim())||CAT_RU[category]||'Карусель',
+    title:finalTitle,
     category, format, payload
   });
-  if(id) setCurrentProjectUuid(id);
+  if(id){
+    setCurrentProjectUuid(id);
+    addRecentEvent(existingUuid?'edit':'create',finalTitle,payload);
+  }
   return id;
 }
 // Быстрое сохранение без диалога: обновляет проект, с которым уже связан черновик,
@@ -1678,6 +1686,7 @@ function loadProject(id){
   applyFullImport(p.payload);
   setCurrentProjectUuid(id);
   saveState();
+  addRecentEvent('open',p.title||CAT_RU[category]||'Карусель',p.payload);
   return true;
 }
 
@@ -2243,7 +2252,7 @@ async function collectBugReport(){
     'Формат:     '+format+'  |  Категория: '+category+'  |  Тема оформления: '+themeStr,
     'Слайдов:    '+slides.length+'  |  Текущий: '+(current+1)+'  |  По типам: '+typeStr,
     'Подпись:    '+(globalPostCaption||'').length+' символов',
-    'Расписание: '+schedCount+' записей  |  Недавние файлы: '+recentCount+'  |  Шаблоны слайдов: '+tplCount+'  |  Шаблоны подписи: '+capTplCount,
+    'Расписание: '+schedCount+' записей  |  Недавнее: '+recentCount+'  |  Шаблоны слайдов: '+tplCount+'  |  Шаблоны подписи: '+capTplCount,
     '',
     '-- ОКРУЖЕНИЕ --',
     'Окно:       '+window.innerWidth+'x'+window.innerHeight+'  |  Экран: '+window.screen.width+'x'+window.screen.height+'  |  DPR: '+(window.devicePixelRatio||1),
@@ -2415,9 +2424,15 @@ window.Dashboard=(function(){
     wrap.innerHTML='';
     if(!arr.length){ empty.style.display='block'; return; }
     empty.style.display='none';
-    const iconByType={json:'data_object',md:'description',txt:'notes'};
+    const ACTION_META={
+      open:{icon:'folder_open',label:'Открыт'},
+      create:{icon:'add_circle',label:'Создан'},
+      edit:{icon:'edit',label:'Изменён'},
+      export:{icon:'download',label:'Экспортирован'}
+    };
     arr.forEach((r,idx)=>{
       const dt=new Date(r.date).toLocaleString('ru-RU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+      const meta=ACTION_META[r.action]||{icon:'draft',label:''};
       const row=document.createElement('div'); row.className='glass-card p-md rounded-xl flex items-center gap-sm cursor-pointer hover:bg-white/10';
       const thumbBox=document.createElement('div');
       thumbBox.className='w-[104px] h-[104px] rounded-lg flex-shrink-0 overflow-hidden bg-surface-container-highest relative';
@@ -2427,10 +2442,10 @@ window.Dashboard=(function(){
         frameEl.style.transform=`scale(${104/fS.w})`; frameEl.style.transformOrigin='top left';
         thumbBox.appendChild(frameEl);
       } else {
-        thumbBox.innerHTML=`<div class="w-full h-full flex items-center justify-center"><span class="material-symbols-outlined text-secondary text-3xl">${iconByType[r.type]||'draft'}</span></div>`;
+        thumbBox.innerHTML=`<div class="w-full h-full flex items-center justify-center"><span class="material-symbols-outlined text-secondary text-3xl">${meta.icon}</span></div>`;
       }
       const info=document.createElement('div'); info.className='flex-1 min-w-0';
-      info.innerHTML=`<p class="text-base text-on-surface truncate">${(r.name||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')}</p><p class="text-xs text-on-surface-variant mt-1">${dt}</p>`;
+      info.innerHTML=`<p class="text-base text-on-surface truncate">${esc(r.title||'')}</p><p class="text-xs text-on-surface-variant mt-1 flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">${meta.icon}</span>${meta.label} · ${dt}</p>`;
       const delBtn=document.createElement('button'); delBtn.className='p-2 text-on-surface-variant hover:text-error';
       delBtn.innerHTML='<span class="material-symbols-outlined text-[18px]">delete</span>';
       delBtn.onclick=(e)=>{
@@ -2442,8 +2457,8 @@ window.Dashboard=(function(){
       row.append(thumbBox,info,delBtn);
       row.onclick=()=>{
         if(!r.snapshot) return;
-        if(!confirm('Открыть «'+r.name+'»? Текущая карусель будет заменена.')) return;
-        try{ applyFullImport(r.snapshot); saveState(); renderProject(); }catch(err){ alert('Не удалось открыть файл: '+err.message); }
+        if(!confirm('Открыть «'+r.title+'»? Текущая карусель будет заменена.')) return;
+        try{ applyFullImport(r.snapshot); saveState(); renderProject(); }catch(err){ alert('Не удалось открыть: '+err.message); }
       };
       wrap.appendChild(row);
     });
