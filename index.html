@@ -1667,9 +1667,24 @@ window.Storage=Storage;
 const CUR_PROJECT_KEY='garipov_current_project_uuid';
 function getCurrentProjectUuid(){ try{ return localStorage.getItem(CUR_PROJECT_KEY)||null; }catch(e){ return null; } }
 function setCurrentProjectUuid(id){ try{ id?localStorage.setItem(CUR_PROJECT_KEY,id):localStorage.removeItem(CUR_PROJECT_KEY); }catch(e){} }
+// Заголовок поста для карточек в библиотеке: берём реальный текст первого
+// заполненного слайда (title, иначе первая строка body), а не название категории —
+// иначе все посты одной категории выглядят в списке одинаково безымянными.
+function deriveTitleFromSlides(slideList,fallback){
+  const arr=Array.isArray(slideList)?slideList:[];
+  for(const s of arr){
+    const t=(s.title||'').trim();
+    if(t) return t.length>60?t.slice(0,60)+'…':t;
+  }
+  for(const s of arr){
+    const b=(s.body||'').split('\n')[0].trim();
+    if(b) return b.length>60?b.slice(0,60)+'…':b;
+  }
+  return fallback;
+}
 function saveCurrentAsProject(name,existingUuid){
   const payload=buildFullExport();
-  const finalTitle=(name&&name.trim())||CAT_RU[category]||'Карусель';
+  const finalTitle=(name&&name.trim())||deriveTitleFromSlides(slides,CAT_RU[category]||'Карусель');
   const id=Storage.save({
     uuid:existingUuid||undefined,
     title:finalTitle,
@@ -1691,7 +1706,7 @@ function quickSaveProject(){
     const id=saveCurrentAsProject(existing.title,cur);
     return {id, isNew:false, title:existing.title};
   }
-  const name=prompt('Название проекта:',CAT_RU[category]||'Карусель');
+  const name=prompt('Название проекта:',deriveTitleFromSlides(slides,CAT_RU[category]||'Карусель'));
   if(name===null) return null;
   const id=saveCurrentAsProject(name);
   return {id, isNew:true, title:name};
@@ -2157,7 +2172,7 @@ function autoSaveDraftToCategory(){
   const payload=buildFullExport();
   const id=Storage.save({
     uuid:existingUuid||undefined,
-    title:CAT_RU[category]||category,
+    title:deriveTitleFromSlides(slides,CAT_RU[category]||category),
     category, format, payload, isAuto:true
   });
   if(id){ map[category]=id; _setCatAutosaveMap(map); }
