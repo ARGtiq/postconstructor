@@ -416,9 +416,10 @@ input[type=range]::-webkit-slider-runnable-track{width:100%;height:4px;cursor:po
           <p class="font-label-md text-on-surface truncate" id="pr-sync-email-label"></p>
           <button id="pr-sync-logout-btn" class="text-error text-[11px] font-label-sm">Выйти</button>
         </div>
+        <p class="text-on-surface-variant text-[11px] opacity-70">Изменения отправляются автоматически, изменения с других устройств подтягиваются в фоне.</p>
         <button id="pr-sync-now-btn" class="w-full glass-card rounded-xl p-2.5 flex items-center justify-center gap-2 border border-primary/30 hover:border-primary/60 active:scale-[.99]">
           <span class="material-symbols-outlined text-primary text-[20px]">sync</span>
-          <span class="font-label-md text-on-surface">Синхронизировать сейчас</span>
+          <span class="font-label-md text-on-surface">Обновить сейчас</span>
         </button>
         <p id="pr-sync-status" class="text-on-surface-variant text-[11px] text-center"></p>
       </div>
@@ -1547,9 +1548,14 @@ const Storage=(()=>{
     if(typeof p.payload==='string'){ try{ p.payload=JSON.parse(p.payload); }catch(e){} }
     return p;
   }
+  // Хук на пользовательские изменения (save/remove) — используется Sync для авто-push.
+  // Намеренно НЕ вызывается из importBackup: иначе слияние, пришедшее с сервера при
+  // pull, тут же запускало бы push обратно и гоняло бы одни и те же данные по кругу.
+  let _onChange=null;
   return {
     uuid,
     hasNative(){ return !!NATIVE; },
+    setOnChange(fn){ _onChange=fn; },
     // Все активные проекты, новые сверху
     getAll(){
       return _all().map(_norm).filter(p=>!p.deleted)
@@ -1566,12 +1572,13 @@ const Storage=(()=>{
       const a=_all(); const i=a.findIndex(p=>p.uuid===project.uuid);
       if(i>=0) a[i]=project; else a.push(project);
       if(!_write(a)) return null; // переполнение — вызывающий покажет ошибку
+      if(_onChange) _onChange();
       return project.uuid;
     },
     // Мягкое удаление (запись остаётся с deleted=1 — задел под синк)
     remove(id){
       const a=_all(); const p=a.find(x=>x.uuid===id);
-      if(p){ p.deleted=1; p.updated_at=Date.now(); p.sync_status='local'; _write(a); }
+      if(p){ p.deleted=1; p.updated_at=Date.now(); p.sync_status='local'; _write(a); if(_onChange) _onChange(); }
     },
     // Полное удаление из хранилища (без задела под синк)
     purge(id){ _write(_all().filter(x=>x.uuid!==id)); },
@@ -1629,6 +1636,9 @@ const SYNC_CONFIG_KEY='garipov_sync_config_v1';
 
 const Sync=(()=>{
   let client=null, user=null, cfgSignature='';
+  let autoTimer=null, pushDebounce=null, lastSyncAt=0, autoBusy=false;
+  const AUTO_PULL_INTERVAL_MS=90000; // раз в 1.5 минуты подтягиваем изменения с другого устройства
+  const PUSH_DEBOUNCE_MS=2500;       // не долбим сеть на каждое нажатие клавиши/правку
   function getConfig(){
     try{ return JSON.parse(localStorage.getItem(SYNC_CONFIG_KEY)||'null'); }catch(e){ return null; }
   }
@@ -1640,6 +1650,10 @@ const Sync=(()=>{
   function clearConfig(){
     localStorage.removeItem(SYNC_CONFIG_KEY);
     user=null; client=null; cfgSignature='';
+    stopAutoLoop();
+  }
+  function notifyStatus(text){
+    if(window.Projects&&window.Projects.onSyncStatus) window.Projects.onSyncStatus(text,lastSyncAt);
   }
   // Лениво создаёт/пересоздаёт клиент, если ключи есть и изменились
   function ensureClient(){
@@ -1650,8 +1664,16 @@ const Sync=(()=>{
     client=window.supabase.createClient(cfg.url,cfg.key);
     cfgSignature=sig;
     client.auth.onAuthStateChange((_evt,session)=>{
+      const wasLoggedIn=!!user;
       user=session?session.user:null;
       if(window.Projects&&window.Projects.onAuthChange) window.Projects.onAuthChange(user);
+      if(user&&!wasLoggedIn){
+        // Только что вошли — сразу полный синк и запуск фонового цикла
+        syncNow().catch(e=>notifyStatus('Ошибка синхронизации: '+e.message));
+        startAutoLoop();
+      }else if(!user){
+        stopAutoLoop();
+      }
     });
     return client;
   }
@@ -1665,7 +1687,7 @@ const Sync=(()=>{
     });
     if(error) throw error;
   }
-  async function logout(){ const c=ensureClient(); if(c) await c.auth.signOut(); }
+  async function logout(){ const c=ensureClient(); if(c) await c.auth.signOut(); stopAutoLoop(); }
   function currentUser(){ return user; }
   // Отправить локальные проекты на сервер (upsert по uuid; user_id не шлём —
   // на INSERT подставится default auth.uid(), на UPDATE сохранится прежний)
@@ -1696,13 +1718,52 @@ const Sync=(()=>{
   async function syncNow(){
     if(!isConfigured()) throw new Error('Синхронизация не настроена.');
     if(!user) throw new Error('Сначала войдите по email.');
-    const pushed=await push();
-    const res=await pull();
-    return {pushed,...res};
+    if(autoBusy) return {pushed:0,added:0,updated:0,skipped:0}; // уже идёт фоновый цикл — не дублируем запрос
+    autoBusy=true;
+    notifyStatus('Синхронизирую…');
+    try{
+      const pushed=await push();
+      const res=await pull();
+      lastSyncAt=Date.now();
+      if(window.Projects&&window.Projects.render) window.Projects.render();
+      notifyStatus('Синхронизировано');
+      return {pushed,...res};
+    }finally{ autoBusy=false; }
   }
-  // Пробуем поднять клиент сразу при загрузке страницы, если ключи уже сохранены
+  // Фоновый цикл: раз в AUTO_PULL_INTERVAL_MS подтягиваем изменения с других устройств.
+  // Свои изменения уходят раньше — по debounced push при каждом save/remove.
+  function startAutoLoop(){
+    stopAutoLoop();
+    autoTimer=setInterval(()=>{
+      if(!user||document.hidden) return; // не дёргаем сеть, пока вкладка свёрнута
+      syncNow().catch(e=>notifyStatus('Ошибка синхронизации: '+e.message));
+    },AUTO_PULL_INTERVAL_MS);
+    document.addEventListener('visibilitychange',_onVisible);
+  }
+  function stopAutoLoop(){
+    if(autoTimer){ clearInterval(autoTimer); autoTimer=null; }
+    document.removeEventListener('visibilitychange',_onVisible);
+  }
+  function _onVisible(){
+    // Вернулись на вкладку — досрочно подтягиваем, что накопилось на другом устройстве
+    if(!document.hidden&&user) syncNow().catch(e=>notifyStatus('Ошибка синхронизации: '+e.message));
+  }
+  // Реакция на локальные изменения (save/remove в Storage) — отправляем на сервер
+  // с задержкой, чтобы не слать запрос на каждую мелкую правку по отдельности.
+  Storage.setOnChange(()=>{
+    if(!isConfigured()||!user) return;
+    clearTimeout(pushDebounce);
+    pushDebounce=setTimeout(()=>{
+      push().then(()=>{ lastSyncAt=Date.now(); notifyStatus('Синхронизировано'); })
+            .catch(e=>notifyStatus('Ошибка отправки: '+e.message));
+    },PUSH_DEBOUNCE_MS);
+  });
+  // Пробуем поднять клиент сразу при загрузке страницы, если ключи уже сохранены.
+  // Если сессия уже была (Magic Link авторизует до перезагрузки) — auth-колбэк выше
+  // сам запустит первый синк и фоновый цикл.
   ensureClient();
-  return { isConfigured, login, logout, currentUser, syncNow, saveConfig, clearConfig, getConfig };
+  function lastSync(){ return lastSyncAt; }
+  return { isConfigured, login, logout, currentUser, syncNow, saveConfig, clearConfig, getConfig, lastSync };
 })();
 window.Sync=Sync;
 
@@ -2389,6 +2450,14 @@ window.Projects=(function(){
     if(id) render();
     else alert('Не удалось сохранить (возможно, переполнено хранилище браузера — сделайте бэкап и очистите старые проекты).');
   }
+  function showSyncStatus(text,ts){
+    const st=document.getElementById('pr-sync-status');
+    if(!st) return;
+    if(ts){
+      const time=new Date(ts).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
+      st.textContent=text+' · '+time;
+    }else st.textContent=text;
+  }
   function initOnce(){
     document.getElementById('pr-btn-save-current').onclick=saveCurrent;
     document.getElementById('pr-btn-export').onclick=()=>{
@@ -2443,13 +2512,8 @@ window.Projects=(function(){
     };
     document.getElementById('pr-sync-logout-btn').onclick=async()=>{ await Sync.logout(); };
     document.getElementById('pr-sync-now-btn').onclick=async()=>{
-      const st=document.getElementById('pr-sync-status');
-      st.textContent='Синхронизирую…';
-      try{
-        const r=await Sync.syncNow();
-        render();
-        st.textContent=`Готово: отправлено ${r.pushed}, добавлено ${r.added}, обновлено ${r.updated}.`;
-      }catch(err){ st.textContent='Ошибка: '+err.message; }
+      try{ await Sync.syncNow(); }
+      catch(err){ showSyncStatus('Ошибка: '+err.message); }
     };
   }
   let inited=false;
@@ -2460,10 +2524,13 @@ window.Projects=(function(){
       const box=document.getElementById('pr-sync-box');
       if(box) box.style.display=Sync.isConfigured()?'block':'none';
       this.reflectAuth();
+      if(Sync.lastSync()) showSyncStatus('Синхронизировано',Sync.lastSync());
     },
     render,
     // Вызывается модулем Sync при изменении статуса входа
     onAuthChange(user){ this.reflectAuth(user); },
+    // Вызывается модулем Sync на каждое авто- и ручное событие синхронизации
+    onSyncStatus(text,ts){ showSyncStatus(text,ts); },
     reflectAuth(user){
       if(!Sync.isConfigured()) return;
       user=user!==undefined?user:Sync.currentUser();
