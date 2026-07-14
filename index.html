@@ -79,6 +79,7 @@ html.theme-light .theme-card.active{background:rgba(0,0,0,.05) !important;border
 html.theme-light .glass-input{background:#ffffff !important;color:#2b2620 !important;border-color:rgba(0,0,0,.15) !important}
 html.theme-light .modal-field{background:#ffffff !important;color:#2b2620 !important;border-color:rgba(0,0,0,.15) !important}
 html.theme-light .imp-textarea{background:#ffffff !important;color:#2b2620 !important;border-color:rgba(0,0,0,.12) !important}
+html.theme-light .btn-glass{color:#2b2620 !important;border-color:rgba(0,0,0,.15) !important}
 html.theme-light .chip-btn{background:rgba(0,0,0,.05) !important;color:#6b6355 !important;border-color:rgba(0,0,0,.1) !important}
 html.theme-light .tab-btn{color:#8a8175 !important}
 html.theme-light .tab-btn.active{color:var(--accent) !important}
@@ -126,6 +127,7 @@ html.theme-ios .tab-btn.active{color:var(--accent) !important}
 html.theme-ios .opt-btn{color:#3a3a3c !important}
 html.theme-ios .opt-btn.active{background:#1c1c1e !important;color:#fff !important}
 html.theme-ios .pattern-btn{background:rgba(60,60,67,.06) !important;border-color:rgba(60,60,67,.12) !important;color:#3a3a3c !important}
+html.theme-ios .btn-glass{color:#1c1c1e !important;border-color:rgba(60,60,67,.15) !important}
 html.theme-ios .pattern-btn.active{color:var(--accent) !important;border-color:var(--accent) !important}
 html.theme-ios .emoji-cat-btn{background:rgba(60,60,67,.08) !important;color:#3a3a3c !important}
 html.theme-ios #bottom-nav,html.theme-ios #editor-subnav{background:rgba(255,255,255,.55) !important;border-color:rgba(255,255,255,.6) !important;backdrop-filter:blur(30px) saturate(200%);box-shadow:0 8px 32px rgba(0,0,0,.12)}
@@ -983,7 +985,7 @@ input[type=range]::-webkit-slider-runnable-track{width:100%;height:4px;cursor:po
           <div class="flex items-center gap-3"><span class="material-symbols-outlined text-error">delete_forever</span><span class="font-body-md text-body-md text-error">Очистить все данные приложения</span></div>
         </button>
       </div>
-
+      <p id="se-app-version" class="text-center text-on-surface-variant text-[11px] opacity-50 pt-2 pb-4"></p>
     </section>
 
   </main>
@@ -1200,6 +1202,10 @@ const CAT_PALETTES={
   review:  {cover:'sand', odd:'cream',even:'terrl',end:'terr',  chips:[{c:'#F0EAE0',n:'Обложка'},{c:'#FAF7F2',n:'Нечётные'},{c:'#E8C4B0',n:'Чётные'},{c:'#C47A5A',n:'Финал'}]},
   oncology:{cover:'ink',  odd:'sand', even:'cream',end:'terr',  chips:[{c:'#2C2416',n:'Обложка'},{c:'#F0EAE0',n:'Нечётные'},{c:'#FAF7F2',n:'Чётные'},{c:'#C47A5A',n:'Финал'}]},
 };
+/* Версия приложения — показывается внизу Настроек. Бампать вручную при
+   каждой значимой правке (следующий за этим сообщением коммит и все
+   последующие) — формат MAJOR.MINOR.PATCH, дата для ориентира. */
+const APP_VERSION='1.1.0'; // 2026-07-14 — контраст кнопок, номер версии, история проектов
 const CAT_RU={symptom:'Симптом/Диагноз',myth:'Разбор мифа',prevent:'Профилактика/Чеклист',
   habit:'Привычка/Совет',delicate:'Деликатные темы',qa:'Вопрос-ответ',
   personal:'Личное/О враче',review:'Отзыв',oncology:'Онкология'};
@@ -1767,6 +1773,49 @@ const Sync=(()=>{
     if(error) throw error;
     return Storage.importBackup({projects:data||[]});
   }
+  // ── Синхронизация мелких данных: недавние файлы, шаблоны слайдов/подписи, расписание ──
+  // Единая таблица user_blobs (kind→data) на пользователя. Т.к. эти данные меняются
+  // в десятках мест по коду без единого хука (в отличие от Storage.save), сверяем их
+  // раз за цикл синхронизации по хешу содержимого — дёшево для их небольшого размера.
+  const BLOB_KINDS=[
+    {kind:'recent',key:'garipov_recent_files'},
+    {kind:'schedule',key:'garipov_mobile_schedule_v1'},
+    {kind:'templates_slide',key:'garipov_custom_tpl_v1'},
+    {kind:'templates_caption',key:'garipov_caption_templates_v1'}
+  ];
+  const BLOB_META_KEY='garipov_sync_blob_meta_v1';
+  function _blobMeta(){ try{ return JSON.parse(localStorage.getItem(BLOB_META_KEY)||'{}'); }catch(e){ return {}; } }
+  function _setBlobMeta(m){ try{ localStorage.setItem(BLOB_META_KEY,JSON.stringify(m)); }catch(e){} }
+  async function syncBlobs(){
+    const c=ensureClient();
+    if(!c||!user) return;
+    const{data,error}=await c.from('user_blobs').select('*').in('kind',BLOB_KINDS.map(k=>k.kind));
+    if(error){ console.warn('syncBlobs pull:',error.message); return; }
+    const remoteByKind={}; (data||[]).forEach(r=>remoteByKind[r.kind]=r);
+    const meta=_blobMeta();
+    const toPush=[];
+    for(const {kind,key} of BLOB_KINDS){
+      const localRaw=localStorage.getItem(key)||'[]';
+      const remote=remoteByKind[kind];
+      const remoteRaw=remote?JSON.stringify(remote.data):null;
+      const myMeta=meta[kind]||{ts:0,hash:''};
+      if(remote&&remote.updated_at>myMeta.ts&&remoteRaw!==localRaw){
+        // На другом устройстве есть более новая версия — принимаем её
+        try{ localStorage.setItem(key,remoteRaw); }catch(e){ continue; }
+        meta[kind]={ts:remote.updated_at,hash:remoteRaw};
+      }else if(localRaw!==myMeta.hash){
+        // Локально что-то изменилось с прошлой синхронизации — отправим
+        const ts=Date.now();
+        toPush.push({user_id:undefined,kind,data:JSON.parse(localRaw),updated_at:ts});
+        meta[kind]={ts,hash:localRaw};
+      }
+    }
+    if(toPush.length){
+      const{error:pushErr}=await c.from('user_blobs').upsert(toPush,{onConflict:'user_id,kind'});
+      if(pushErr){ console.warn('syncBlobs push:',pushErr.message); return; }
+    }
+    _setBlobMeta(meta);
+  }
   // Полный цикл: сначала отдаём свои изменения, потом забираем чужие/новые
   async function syncNow(){
     if(!isConfigured()) throw new Error('Синхронизация не настроена.');
@@ -1777,6 +1826,7 @@ const Sync=(()=>{
     try{
       const pushed=await push();
       const res=await pull();
+      await syncBlobs().catch(e=>console.warn('syncBlobs:',e.message));
       lastSyncAt=Date.now();
       if(window.Projects&&window.Projects.render) window.Projects.render();
       notifyStatus('Синхронизировано');
@@ -2059,6 +2109,33 @@ let _asTimer=null;
 function saveState(){
   clearTimeout(_asTimer);
   _asTimer=setTimeout(()=>{ try{ localStorage.setItem(LS_KEY,JSON.stringify({slides,current,category,format,numStart,emojiStyle,globalPostCaption})); }catch(e){} },300);
+  scheduleAutoCategorySave();
+}
+/* ═══════════════════ АВТОСОХРАНЕНИЕ В БИБЛИОТЕКУ ПО КАТЕГОРИЯМ ═══════════════════
+   Страховка: пока работаешь над постом, его состояние само оседает в «Проектах»
+   отдельной записью на каждую категорию («Симптом/Диагноз», «Разбор мифа» и т.д.).
+   Не связано с ручным сохранением через кнопку — это отдельная, автоматически
+   обновляемая запись, распознаётся по флагу isAuto (бейдж «авто» в списке). */
+const CAT_AUTOSAVE_KEY='garipov_category_autosave_v1';
+const AUTOSAVE_DEBOUNCE_MS=20000; // не чаще, чем раз в 20с простоя — иначе история версий забьётся правками на каждую букву
+let _catAutosaveTimer=null;
+function _getCatAutosaveMap(){ try{ return JSON.parse(localStorage.getItem(CAT_AUTOSAVE_KEY)||'{}'); }catch(e){ return {}; } }
+function _setCatAutosaveMap(m){ try{ localStorage.setItem(CAT_AUTOSAVE_KEY,JSON.stringify(m)); }catch(e){} }
+function scheduleAutoCategorySave(){
+  clearTimeout(_catAutosaveTimer);
+  _catAutosaveTimer=setTimeout(autoSaveDraftToCategory,AUTOSAVE_DEBOUNCE_MS);
+}
+function autoSaveDraftToCategory(){
+  if(!slides||!slides.length) return; // нечего сохранять
+  const map=_getCatAutosaveMap();
+  const existingUuid=map[category];
+  const payload=buildFullExport();
+  const id=Storage.save({
+    uuid:existingUuid||undefined,
+    title:CAT_RU[category]||category,
+    category, format, payload, isAuto:true
+  });
+  if(id){ map[category]=id; _setCatAutosaveMap(map); }
 }
 loadState();
 
@@ -2479,7 +2556,10 @@ window.Projects=(function(){
       const histCount=Array.isArray(p.history)?p.history.length:0;
       card.innerHTML=`
         <div class="min-w-0 flex-1 cursor-pointer" data-open="${p.uuid}">
-          <h3 class="font-headline-md text-base truncate text-on-surface">${esc(p.title||'Без названия')}</h3>
+          <h3 class="font-headline-md text-base truncate text-on-surface flex items-center gap-1.5">
+            <span class="truncate">${esc(p.title||'Без названия')}</span>
+            ${p.isAuto?'<span class="shrink-0 text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-primary/15 text-primary font-label-sm">авто</span>':''}
+          </h3>
           <p class="text-on-surface-variant font-label-sm truncate">${FMT_RU[p.format]||p.format||''} · ${CAT_RU[p.category]||p.category||''} · ${cnt} сл.</p>
           <p class="text-on-surface-variant text-[11px] opacity-70">${fmtDate(p.updated_at)}${histCount?' · '+histCount+' верс.':''}</p>
         </div>
@@ -3538,6 +3618,9 @@ window.Schedule=(function(){
     const daysInPrevMonth=new Date(year,month,0).getDate();
     const today=new Date();
     const sched=loadSchedule();
+    // Посты (сохранённые проекты) тоже отмечаются в календаре — по дате создания.
+    // Так видна полная история: не только запланированные напоминания, но и реально сделанные посты.
+    const posts=(window.Storage?Storage.getAll():[]).filter(p=>!p.isAuto); // авто-черновики по категориям в календарь не тащим
     const cells=[];
     for(let i=0;i<startOffset;i++) cells.push({d:daysInPrevMonth-startOffset+i+1,other:true,date:new Date(year,month-1,daysInPrevMonth-startOffset+i+1)});
     for(let d=1;d<=daysInMonth;d++) cells.push({d,other:false,date:new Date(year,month,d)});
@@ -3545,8 +3628,13 @@ window.Schedule=(function(){
     cells.forEach(c=>{
       const cell=document.createElement('div');
       cell.className='cal-cell'+(c.other?' other-month':'')+(sameDay(c.date,today)?' today':'')+(sameDay(c.date,selectedDate)?' selected':'');
-      const hasEvents=sched.some(item=>sameDay(new Date(item.date),c.date));
-      cell.innerHTML=`<span>${c.d}</span>`+(hasEvents?'<span class="cal-dot"></span>':'<span style="width:4px;height:4px"></span>');
+      const hasSched=sched.some(item=>sameDay(new Date(item.date),c.date));
+      const hasPost=posts.some(p=>sameDay(new Date(p.created_at),c.date));
+      const dot=hasSched&&hasPost?'<span class="cal-dot" style="background:linear-gradient(90deg,var(--accent) 50%,#8ad4c4 50%)"></span>'
+        :hasSched?'<span class="cal-dot"></span>'
+        :hasPost?'<span class="cal-dot" style="background:#8ad4c4"></span>'
+        :'<span style="width:4px;height:4px"></span>';
+      cell.innerHTML=`<span>${c.d}</span>`+dot;
       cell.onclick=()=>{ selectedDate=c.date; if(c.other){ viewDate=new Date(c.date.getFullYear(),c.date.getMonth(),1); } renderCalendar(); renderDayList(); };
       grid.appendChild(cell);
     });
@@ -3555,19 +3643,30 @@ window.Schedule=(function(){
     const sched=loadSchedule();
     const dayItems=sched.map((item,idx)=>({item,idx})).filter(({item})=>sameDay(new Date(item.date),selectedDate))
       .sort((a,b)=>new Date(a.item.date)-new Date(b.item.date));
+    const posts=(window.Storage?Storage.getAll():[]).filter(p=>!p.isAuto&&sameDay(new Date(p.created_at),selectedDate));
     const today=new Date();
     document.getElementById('sc-day-title').textContent=sameDay(selectedDate,today)
       ? 'Сегодня' : selectedDate.toLocaleDateString('ru-RU',{day:'numeric',month:'long'});
     const wrap=document.getElementById('sc-day-list'); const empty=document.getElementById('sc-day-empty');
     wrap.innerHTML='';
-    if(!dayItems.length){ empty.style.display='block'; return; }
+    if(!dayItems.length&&!posts.length){ empty.style.display='block'; return; }
     empty.style.display='none';
     dayItems.forEach(({item,idx})=>{
       const timeStr=new Date(item.date).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
       const row=document.createElement('div'); row.className='glass-card p-sm rounded-xl flex items-center gap-sm';
       row.innerHTML=`<div class="w-12 h-12 rounded-lg bg-surface-container-highest flex items-center justify-center flex-shrink-0"><span class="material-symbols-outlined text-tertiary-fixed-dim">event</span></div>
-        <div class="flex-1 min-w-0"><h4 class="font-label-md text-on-surface truncate">${escT(item.title)}</h4><p class="text-on-surface-variant font-label-sm">${timeStr}</p></div>
+        <div class="flex-1 min-w-0"><h4 class="font-label-md text-on-surface truncate">${escT(item.title)}</h4><p class="text-on-surface-variant font-label-sm">Напоминание · ${timeStr}</p></div>
         <button class="p-2 text-on-surface-variant sc-del" data-idx="${idx}"><span class="material-symbols-outlined">delete</span></button>`;
+      wrap.appendChild(row);
+    });
+    // Реально сделанные посты за этот день — история, без кнопки удаления (удаляются из «Проектов»)
+    posts.forEach(p=>{
+      const timeStr=new Date(p.created_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
+      const row=document.createElement('div'); row.className='glass-card p-sm rounded-xl flex items-center gap-sm cursor-pointer';
+      row.innerHTML=`<div class="w-12 h-12 rounded-lg bg-surface-container-highest flex items-center justify-center flex-shrink-0"><span class="material-symbols-outlined" style="color:#8ad4c4">post_add</span></div>
+        <div class="flex-1 min-w-0"><h4 class="font-label-md text-on-surface truncate">${escT(p.title||'Без названия')}</h4><p class="text-on-surface-variant font-label-sm">Пост · ${CAT_RU[p.category]||''} · ${timeStr}</p></div>
+        <span class="material-symbols-outlined text-on-surface-variant">chevron_right</span>`;
+      row.onclick=()=>{ if(loadProject(p.uuid)) showView('structure'); };
       wrap.appendChild(row);
     });
     wrap.querySelectorAll('.sc-del').forEach(btn=>{
@@ -4265,6 +4364,7 @@ html.${id} .theme-card{background:${cardBg} !important;border-color:${cardBorder
 html.${id} .theme-card.active{background:${hoverBg} !important;border-color:var(--accent) !important;color:${textMain} !important}
 html.${id} .glass-input,html.${id} .modal-field,html.${id} .imp-textarea{background:${inputBg} !important;color:${textMain} !important;border-color:${border} !important}
 html.${id} .chip-btn{background:${chipBg} !important;color:${textVar} !important;border-color:${cardBorder} !important;${glass?`backdrop-filter:blur(12px) saturate(160%);`:''}}
+html.${id} .btn-glass{color:${textMain} !important;border-color:${cardBorder} !important}
 html.${id} .tab-btn{color:${textVar} !important}
 html.${id} .tab-btn.active{color:var(--accent) !important}
 html.${id} .opt-btn{color:${textVar} !important}
@@ -4619,6 +4719,7 @@ html.${id} #tpl-modal>div,html.${id} #dl-result-modal>div,html.${id} #dl-all-cho
       document.getElementById('se-sync-url').value=cfg&&cfg.url?cfg.url:'';
       document.getElementById('se-sync-key').value=cfg&&cfg.key?cfg.key:'';
       document.getElementById('se-sync-status').textContent='';
+      document.getElementById('se-app-version').textContent='Версия '+APP_VERSION;
     },
     getPrefs(){ return prefs; },
     isNotifyEnabled(){ return !!prefs.notify; },
