@@ -8,6 +8,8 @@
 -- нет — просто ничего не делает, create table ниже создаст её сразу верно.
 alter table if exists public.projects
   add column if not exists history jsonb not null default '[]'::jsonb;
+alter table if exists public.projects
+  add column if not exists published boolean not null default false;
 
 create table if not exists public.projects (
   uuid text primary key,
@@ -17,6 +19,7 @@ create table if not exists public.projects (
   format text,
   payload jsonb not null,
   history jsonb not null default '[]'::jsonb,
+  published boolean not null default false,
   created_at bigint not null,
   updated_at bigint not null,
   deleted boolean not null default false

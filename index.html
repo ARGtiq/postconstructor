@@ -172,7 +172,7 @@ input[type=range]::-webkit-slider-runnable-track{width:100%;height:4px;cursor:po
 .view{display:none}
 .view.active{display:block}
 #bottom-nav a.nav-active{background:var(--accent);color:var(--accent-ink)}
-#editor-subnav a.nav-active{background:var(--accent);color:var(--accent-ink)}
+#editor-subnav #sub-nav-next{filter:drop-shadow(0 2px 8px rgba(0,0,0,.25))}
 
 /* ===== Ported render engine (frame CSS — must stay pixel-faithful to export) ===== */
 .frame{flex-shrink:0;border-radius:16px;position:relative;overflow:hidden;background:#FAF7F2}
@@ -354,20 +354,6 @@ input[type=range]::-webkit-slider-runnable-track{width:100%;height:4px;cursor:po
       <p class="text-xs text-on-surface-variant opacity-70">Выбор формата откроет экран «Структура», где можно выбрать категорию и добавить слайды.</p>
     </section>
     <section class="space-y-sm">
-      <div class="flex items-center justify-between">
-        <h2 class="font-headline-md text-headline-md">Текущий проект</h2>
-        <a data-nav="structure" class="text-primary font-label-md flex items-center gap-1 cursor-pointer">Открыть <span class="material-symbols-outlined text-sm">arrow_forward</span></a>
-      </div>
-      <a data-nav="structure" class="glass-card rounded-2xl p-md relative overflow-hidden flex flex-col justify-between border-2 border-primary/20 block cursor-pointer">
-        <div class="absolute top-0 right-0 p-4"><span id="da-project-status" class="bg-primary-container text-on-primary-container font-label-sm px-3 py-1 rounded-full">В работе</span></div>
-        <div><h3 id="da-project-title" class="font-headline-md text-headline-md mb-1">—</h3><p id="da-project-subtitle" class="text-on-surface-variant font-label-sm">—</p></div>
-        <div class="space-y-2 mt-4">
-          <div class="flex justify-between font-label-sm text-on-surface-variant"><span id="da-project-slides-label">0 / 0 слайдов заполнено</span><span id="da-project-percent">0%</span></div>
-          <div class="h-2 w-full bg-surface-container-highest rounded-full overflow-hidden"><div id="da-project-bar" class="h-full bg-primary-fixed-dim neon-glow active-indicator" style="width:0%"></div></div>
-        </div>
-      </a>
-    </section>
-    <section class="space-y-sm">
       <h2 class="font-headline-md text-headline-md">Недавнее</h2>
       <div class="space-y-sm" id="da-recent-list"></div>
       <p id="da-recent-empty" class="text-on-surface-variant font-label-sm text-center py-4" style="display:none">Пока ничего не открывалось, не создавалось и не редактировалось</p>
@@ -427,12 +413,6 @@ input[type=range]::-webkit-slider-runnable-track{width:100%;height:4px;cursor:po
       </div>
     </section>
     <section class="space-y-sm">
-      <button id="pr-btn-save-current" class="w-full glass-card rounded-2xl p-md flex items-center justify-center gap-2 border-2 border-primary/30 hover:border-primary/60 transition-colors active:scale-[.99]">
-        <span class="material-symbols-outlined text-primary">bookmark_add</span>
-        <span class="font-label-md text-on-surface">Сохранить текущую карусель в библиотеку</span>
-      </button>
-    </section>
-    <section class="space-y-sm">
       <div class="flex items-center justify-between">
         <h2 class="font-headline-md text-headline-md">Мои проекты</h2>
         <span id="pr-count" class="text-on-surface-variant font-label-sm">0</span>
@@ -445,6 +425,11 @@ input[type=range]::-webkit-slider-runnable-track{width:100%;height:4px;cursor:po
           <option value="title_desc">По названию Я-А</option>
           <option value="slides_desc">Сначала больше слайдов</option>
         </select>
+        <select id="pr-filter-status" class="bg-surface-container rounded-lg px-2.5 py-1.5 text-on-surface font-label-sm outline-none border border-white/10">
+          <option value="all">Все посты</option>
+          <option value="published">Выложено</option>
+          <option value="unpublished">Не выложено</option>
+        </select>
         <button id="pr-group-toggle" class="flex items-center gap-1 bg-surface-container rounded-lg px-2.5 py-1.5 text-on-surface-variant font-label-sm border border-white/10 active:scale-95">
           <span class="material-symbols-outlined text-[16px]">category</span>По категориям
         </button>
@@ -454,7 +439,7 @@ input[type=range]::-webkit-slider-runnable-track{width:100%;height:4px;cursor:po
         </div>
       </div>
       <div class="space-y-sm" id="pr-list"></div>
-      <p id="pr-empty" class="text-on-surface-variant font-label-sm text-center py-8" style="display:none">Пока нет сохранённых проектов.<br>Сохраните текущую карусель кнопкой выше.</p>
+      <p id="pr-empty" class="text-on-surface-variant font-label-sm text-center py-8" style="display:none">Пока нет сохранённых проектов — начните пост, он появится тут сам.</p>
     </section>
     <p id="pr-storage-note" class="text-xs text-on-surface-variant opacity-60 text-center"></p>
   </main>
@@ -463,9 +448,6 @@ input[type=range]::-webkit-slider-runnable-track{width:100%;height:4px;cursor:po
 <!-- ══════════════════════ VIEW: STRUCTURE ══════════════════════ -->
 <div class="view" id="view-structure">
   <header class="sticky top-0 z-30 bg-background/80 backdrop-blur-md flex items-center gap-base px-margin pt-base pb-3 w-full">
-    <button data-nav="dashboard" class="w-10 h-10 flex items-center justify-center rounded-full bg-surface-container hover:opacity-80 transition-all active:scale-95">
-      <span class="material-symbols-outlined text-primary">arrow_back</span>
-    </button>
     <h1 class="font-headline-lg-mobile text-headline-lg-mobile font-bold text-on-surface tracking-tight">Структура</h1>
   </header>
   <main class="pt-4 pb-8 px-margin">
@@ -553,20 +535,10 @@ input[type=range]::-webkit-slider-runnable-track{width:100%;height:4px;cursor:po
 <!-- ══════════════════════ VIEW: EDITOR ══════════════════════ -->
 <div class="view" id="view-editor">
 <header class="bg-transparent flex justify-between items-center px-margin pt-base w-full sticky top-0 z-30 pb-4">
-  <div class="flex items-center gap-4">
-    <button data-nav="structure" class="w-10 h-10 rounded-full glass-panel flex items-center justify-center hover:opacity-80 transition-opacity">
-      <span class="material-symbols-outlined text-primary">arrow_back</span>
-    </button>
-    <h1 class="font-headline-md text-headline-md font-bold text-on-surface">Редактирование слайда</h1>
-  </div>
-  <div class="flex items-center gap-2">
-    <button id="ed-btn-templates" title="Шаблоны слайда" class="w-10 h-10 rounded-full glass-panel flex items-center justify-center hover:opacity-80 transition-opacity">
-      <span class="material-symbols-outlined text-on-surface-variant">dashboard_customize</span>
-    </button>
-    <button id="ed-btn-check" title="К публикации" class="w-10 h-10 rounded-full flex items-center justify-center hover:opacity-80 transition-opacity neon-glow" style="background:var(--accent)">
-      <span class="material-symbols-outlined" style="color:var(--accent-ink)">arrow_forward</span>
-    </button>
-  </div>
+  <h1 class="font-headline-md text-headline-md font-bold text-on-surface">Редактирование слайда</h1>
+  <button id="ed-btn-templates" title="Шаблоны слайда" class="w-10 h-10 rounded-full glass-panel flex items-center justify-center hover:opacity-80 transition-opacity">
+    <span class="material-symbols-outlined text-on-surface-variant">dashboard_customize</span>
+  </button>
 </header>
 <main class="flex-1 px-margin pb-[120px] flex flex-col gap-6 overflow-y-auto no-scrollbar">
   <div id="ed-preview-placeholder" class="w-full aspect-square"></div>
@@ -838,10 +810,8 @@ input[type=range]::-webkit-slider-runnable-track{width:100%;height:4px;cursor:po
 
 <!-- ══════════════════════ VIEW: PUBLISH ══════════════════════ -->
 <div class="view" id="view-publish">
-<header class="w-full flex justify-between items-center px-margin pt-base pb-base sticky top-0 z-30 backdrop-blur-md border-b border-white/5">
-  <button data-nav="structure" aria-label="Go back" class="text-on-surface hover:opacity-80 transition-opacity p-2 -ml-2"><span class="material-symbols-outlined" style="font-variation-settings:'FILL' 0,'wght' 300">arrow_back</span></button>
+<header class="w-full flex justify-center items-center px-margin pt-base pb-base sticky top-0 z-30 backdrop-blur-md border-b border-white/5">
   <h1 class="font-headline-lg-mobile text-headline-lg-mobile font-bold text-on-surface">Публикация</h1>
-  <button id="pu-btn-save-project" title="Сохранить проект в библиотеку" aria-label="Сохранить проект" class="text-on-surface hover:opacity-80 transition-opacity p-2 -mr-2"><span class="material-symbols-outlined" style="font-variation-settings:'FILL' 0,'wght' 300">bookmark_add</span></button>
 </header>
 <main class="flex-1 px-margin pt-md pb-[120px] flex flex-col gap-lg max-w-2xl mx-auto w-full">
   <section class="flex flex-col gap-sm">
@@ -859,6 +829,11 @@ input[type=range]::-webkit-slider-runnable-track{width:100%;height:4px;cursor:po
     <div class="flex justify-between items-end mb-2"><h2 class="font-headline-md text-headline-md text-primary">Превью карусели</h2><span class="font-label-sm text-label-sm text-on-surface-variant bg-surface-container px-2 py-1 rounded-md" id="pu-slide-count-badge">0 слайдов</span></div>
     <div class="flex overflow-x-auto gap-gutter pb-4 no-scrollbar -mx-margin px-margin snap-x snap-mandatory" id="pu-thumbs"></div>
     <button id="pu-btn-download-all" class="btn-glass rounded-lg py-sm px-md flex items-center justify-center gap-2 font-label-md text-label-md w-full mt-2 group"><span class="material-symbols-outlined text-tertiary-container group-hover:-translate-y-1 transition-transform" style="font-variation-settings:'FILL' 0,'wght' 300">download</span><span id="pu-btn-download-all-label">Скачать все изображения</span></button>
+    <button id="pu-btn-save-project" class="btn-glass rounded-lg py-sm px-md flex items-center justify-center gap-2 font-label-md text-label-md w-full group"><span class="material-symbols-outlined text-primary-container group-hover:scale-110 transition-transform" style="font-variation-settings:'FILL' 0,'wght' 300">bookmark_add</span><span id="pu-btn-save-project-label">Сохранить в библиотеку</span></button>
+    <label class="flex items-center gap-2 px-1 py-1 cursor-pointer select-none">
+      <input type="checkbox" id="pu-published-check" class="w-5 h-5 rounded accent-primary">
+      <span class="font-label-md text-label-md text-on-surface">Выложено</span>
+    </label>
   </section>
 </main>
 </div>
@@ -1178,11 +1153,13 @@ input[type=range]::-webkit-slider-runnable-track{width:100%;height:4px;cursor:po
   <a data-nav="schedule" class="flex items-center justify-center p-3 rounded-full transition-colors text-on-surface-variant"><span class="material-symbols-outlined">calendar_month</span></a>
   <a data-nav="settings" class="flex items-center justify-center p-3 rounded-full transition-colors text-on-surface-variant"><span class="material-symbols-outlined">settings</span></a>
 </nav>
-<nav id="editor-subnav" class="fixed bottom-8 left-1/2 -translate-x-1/2 w-[calc(100%-40px)] max-w-md z-[51] flex justify-around items-center py-2 px-2 bg-white/10 backdrop-blur-xl border border-white/15 rounded-full shadow-lg hidden">
-  <a data-nav="dashboard" class="flex items-center justify-center p-3 rounded-full transition-colors text-on-surface-variant"><span class="material-symbols-outlined">arrow_back</span></a>
-  <a data-nav="structure" class="flex items-center justify-center p-3 rounded-full transition-colors text-on-surface-variant"><span class="material-symbols-outlined">auto_awesome_motion</span></a>
-  <a data-nav="editor" class="flex items-center justify-center p-3 rounded-full transition-colors text-on-surface-variant"><span class="material-symbols-outlined">edit</span></a>
-  <a data-nav="publish" class="flex items-center justify-center p-3 rounded-full transition-colors text-on-surface-variant"><span class="material-symbols-outlined">ios_share</span></a>
+<nav id="editor-subnav" class="fixed bottom-8 left-1/2 -translate-x-1/2 w-[calc(100%-40px)] max-w-md z-[51] flex items-center gap-2 py-2 px-2 bg-white/10 backdrop-blur-xl border border-white/15 rounded-full shadow-lg hidden">
+  <button id="sub-nav-back" class="flex-1 flex items-center justify-center gap-1.5 p-3 rounded-full transition-colors text-on-surface-variant font-label-md active:scale-95">
+    <span class="material-symbols-outlined">arrow_back</span><span>Назад</span>
+  </button>
+  <button id="sub-nav-next" class="flex-1 flex items-center justify-center gap-1.5 p-3 rounded-full transition-colors bg-primary text-on-primary font-label-md active:scale-95">
+    <span id="sub-nav-next-label">Далее</span><span id="sub-nav-next-icon" class="material-symbols-outlined">arrow_forward</span>
+  </button>
 </nav>
 
 <script>
@@ -1221,7 +1198,7 @@ const CAT_PALETTES={
 /* Версия приложения — показывается внизу Настроек. Бампать вручную при
    каждой значимой правке (следующий за этим сообщением коммит и все
    последующие) — формат MAJOR.MINOR.PATCH, дата для ориентира. */
-const APP_VERSION='1.1.2'; // 2026-07-14 — цветовые акценты категорий на карточках Недавнего/Проектов
+const APP_VERSION='1.2.0'; // 2026-07-14 — автосохранение открытого поста в проекты, пошаговая навигация Далее/Назад, фильтр выложено/не выложено, проверка дублей при импорте
 const CAT_RU={symptom:'Симптом/Диагноз',myth:'Разбор мифа',prevent:'Профилактика/Чеклист',
   habit:'Привычка/Совет',delicate:'Деликатные темы',qa:'Вопрос-ответ',
   personal:'Личное/О враче',review:'Отзыв',oncology:'Онкология'};
@@ -1695,7 +1672,8 @@ function saveCurrentAsProject(name,existingUuid){
   const id=Storage.save({
     uuid:existingUuid||undefined,
     title:finalTitle,
-    category, format, payload
+    category, format, payload,
+    isAuto:false // осознанное сохранение — снимаем бейдж «авто», даже если запись раньше была автосохранённой
   });
   if(id){
     setCurrentProjectUuid(id);
@@ -1805,6 +1783,7 @@ const Sync=(()=>{
       uuid:p.uuid, title:p.title||'', category:p.category||'', format:p.format||'',
       payload:typeof p.payload==='string'?JSON.parse(p.payload):p.payload,
       history:Array.isArray(p.history)?p.history:[],
+      published:!!p.published,
       created_at:p.created_at||Date.now(), updated_at:p.updated_at||Date.now(),
       deleted:!!p.deleted
     }));
@@ -1917,6 +1896,18 @@ const Sync=(()=>{
 })();
 window.Sync=Sync;
 
+// Похожий уже сохранённый проект по названию — грубое сравнение без пунктуации/регистра.
+// Используется при импорте файла, чтобы предупредить о вероятном дубле.
+function findSimilarProject(title){
+  const norm=s=>(s||'').toLowerCase().replace(/[^a-zа-яё0-9]+/gi,' ').trim();
+  const nt=norm(title);
+  if(!nt||nt.length<4) return null;
+  return Storage.getAll().find(p=>{
+    const pn=norm(p.title);
+    if(!pn||pn.length<4) return false;
+    return pn===nt||pn.includes(nt)||nt.includes(pn);
+  })||null;
+}
 function importFileByExt(file,onDone){
   const reader=new FileReader();
   reader.onload=e=>{
@@ -1927,21 +1918,36 @@ function importFileByExt(file,onDone){
         const d=JSON.parse(text);
         applyFullImport(d);
         addRecentFile(file.name,'json');
-        onDone(null,{type:'json',count:slides.length,raw:d});
+        onDone(null,{type:'json',count:slides.length,raw:d,duplicate:findSimilarProject(deriveTitleFromSlides(slides,''))});
       } else if(ext==='md'){
         if(!importMD(text)) throw new Error('Не найдено ни одного слайда (проверьте разметку .md)');
         addRecentFile(file.name,'md');
-        onDone(null,{type:'md',count:slides.length});
+        onDone(null,{type:'md',count:slides.length,duplicate:findSimilarProject(deriveTitleFromSlides(slides,''))});
       } else if(ext==='txt'){
         if(!importTXT(text)) throw new Error('Не найдено ни одного слайда (проверьте разметку .txt)');
         addRecentFile(file.name,'txt');
-        onDone(null,{type:'txt',count:slides.length});
+        onDone(null,{type:'txt',count:slides.length,duplicate:findSimilarProject(deriveTitleFromSlides(slides,''))});
       } else {
         throw new Error('Неизвестный формат файла: .'+ext);
       }
     }catch(err){ onDone(err,null); }
   };
   reader.readAsText(file,'utf-8');
+}
+// Общая точка после успешного импорта/открытия: спросить про дубль, привязать
+// к новому проекту (или к найденному похожему) и сразу сохранить в библиотеку.
+function finalizeOpenedImport(info){
+  if(info.duplicate){
+    const openExisting=confirm(
+      'Похоже, уже есть сохранённый пост с похожим названием:\n«'+(info.duplicate.title||'')+'»\n\n'+
+      'Открыть существующий вместо только что импортированного?\n(Отмена — оставить текущий импорт как новый проект.)'
+    );
+    if(openExisting){ loadProject(info.duplicate.uuid); showView('structure'); return; }
+  }
+  setCurrentProjectUuid(null);
+  saveState();
+  persistCurrentDraft();
+  showView('structure');
 }
 function resolvedBg(slide,idx){
   if(slide.bg&&slide.bg!=='auto') return slide.bg;
@@ -2156,33 +2162,34 @@ let _asTimer=null;
 function saveState(){
   clearTimeout(_asTimer);
   _asTimer=setTimeout(()=>{ try{ localStorage.setItem(LS_KEY,JSON.stringify({slides,current,category,format,numStart,emojiStyle,globalPostCaption})); }catch(e){} },300);
-  scheduleAutoCategorySave();
+  scheduleAutoSave();
 }
-/* ═══════════════════ АВТОСОХРАНЕНИЕ В БИБЛИОТЕКУ ПО КАТЕГОРИЯМ ═══════════════════
-   Страховка: пока работаешь над постом, его состояние само оседает в «Проектах»
-   отдельной записью на каждую категорию («Симптом/Диагноз», «Разбор мифа» и т.д.).
-   Не связано с ручным сохранением через кнопку — это отдельная, автоматически
-   обновляемая запись, распознаётся по флагу isAuto (бейдж «авто» в списке). */
-const CAT_AUTOSAVE_KEY='garipov_category_autosave_v1';
-const AUTOSAVE_DEBOUNCE_MS=20000; // не чаще, чем раз в 20с простоя — иначе история версий забьётся правками на каждую букву
-let _catAutosaveTimer=null;
-function _getCatAutosaveMap(){ try{ return JSON.parse(localStorage.getItem(CAT_AUTOSAVE_KEY)||'{}'); }catch(e){ return {}; } }
-function _setCatAutosaveMap(m){ try{ localStorage.setItem(CAT_AUTOSAVE_KEY,JSON.stringify(m)); }catch(e){} }
-function scheduleAutoCategorySave(){
-  clearTimeout(_catAutosaveTimer);
-  _catAutosaveTimer=setTimeout(autoSaveDraftToCategory,AUTOSAVE_DEBOUNCE_MS);
-}
-function autoSaveDraftToCategory(){
+/* ═══════════════════ АВТОСОХРАНЕНИЕ ОТКРЫТОГО ПОСТА В БИБЛИОТЕКУ ═══════════════════
+   Любой пост, над которым идёт работа — открытый из файла, вставленный через
+   «Структуру» или редактируемый — сам оседает в «Проектах» без нажатия «Сохранить».
+   Первое появление контента у ещё не связанного черновика (нет currentProjectUuid)
+   сохраняется НЕМЕДЛЕННО — пост сразу виден в библиотеке. Дальнейшие правки того же
+   проекта — с задержкой 20с простоя, чтобы не забивать историю версий каждой буквой. */
+const AUTOSAVE_DEBOUNCE_MS=20000;
+let _autosaveTimer=null;
+function scheduleAutoSave(){
   if(!slides||!slides.length) return; // нечего сохранять
-  const map=_getCatAutosaveMap();
-  const existingUuid=map[category];
+  if(!getCurrentProjectUuid()){ persistCurrentDraft(); return; } // первое сохранение — сразу
+  clearTimeout(_autosaveTimer);
+  _autosaveTimer=setTimeout(persistCurrentDraft,AUTOSAVE_DEBOUNCE_MS);
+}
+function persistCurrentDraft(){
+  if(!slides||!slides.length) return;
+  const cur=getCurrentProjectUuid();
+  const existing=cur?Storage.get(cur):null;
   const payload=buildFullExport();
   const id=Storage.save({
-    uuid:existingUuid||undefined,
-    title:deriveTitleFromSlides(slides,CAT_RU[category]||category),
-    category, format, payload, isAuto:true
+    uuid:cur||undefined,
+    title:deriveTitleFromSlides(slides,CAT_RU[category]||'Карусель'),
+    category, format, payload,
+    isAuto:existing?existing.isAuto:true // новая запись — авто; у существующей флаг не трогаем (мог быть снят явным сохранением)
   });
-  if(id){ map[category]=id; _setCatAutosaveMap(map); }
+  if(id) setCurrentProjectUuid(id);
 }
 // Одноразовая миграция: раньше проекты сохранялись с заголовком = название категории
 // («Профилактика/Чеклист»), даже когда в слайдах уже был свой текст. Здесь для уже
@@ -2208,6 +2215,8 @@ loadState();
 
 /* ───────────────────────── ROUTER ───────────────────────── */
 const VIEWS=['dashboard','projects','structure','editor','schedule','publish','settings'];
+const STEP_ORDER=['structure','editor','publish'];
+const STEP_LABELS={structure:'Структура',editor:'Редактирование',publish:'Публикация'};
 function showView(name){
   if(!VIEWS.includes(name)) return;
   VIEWS.forEach(v=>{
@@ -2215,9 +2224,16 @@ function showView(name){
     if(el) el.classList.toggle('active',v===name);
   });
   document.querySelectorAll('#bottom-nav a').forEach(a=>a.classList.toggle('nav-active',a.dataset.nav===name));
-  const showSub=['editor','structure','publish'].includes(name);
+  const showSub=STEP_ORDER.includes(name);
   document.getElementById('editor-subnav').classList.toggle('hidden',!showSub);
-  document.querySelectorAll('#editor-subnav a').forEach(a=>a.classList.toggle('nav-active',a.dataset.nav===name));
+  if(showSub){
+    const idx=STEP_ORDER.indexOf(name);
+    const nextLabel=document.getElementById('sub-nav-next-label');
+    const nextIcon=document.getElementById('sub-nav-next-icon');
+    const isLast=idx===STEP_ORDER.length-1;
+    nextLabel.textContent=isLast?'Готово':'Далее: '+STEP_LABELS[STEP_ORDER[idx+1]];
+    nextIcon.textContent=isLast?'home':'arrow_forward'; // на последнем шаге «Далее» превращается в выход на главный экран
+  }
   window.scrollTo(0,0);
   if(name==='dashboard'&&window.Dashboard) window.Dashboard.onEnter();
   if(name==='projects'&&window.Projects) window.Projects.onEnter();
@@ -2228,6 +2244,18 @@ function showView(name){
   if(name==='settings'&&window.Settings) window.Settings.onEnter();
   location.hash=name;
 }
+// Пошаговая навигация между Структурой/Редактированием/Публикацией.
+// С последнего шага «Далее» и с первого «Назад» — выход на главный экран.
+function stepNav(dir){
+  const activeView=STEP_ORDER.find(v=>{ const el=document.getElementById('view-'+v); return el&&el.classList.contains('active'); });
+  if(activeView==='editor'&&typeof tbSnapshot==='function') tbSnapshot(); // фиксируем состояние слайда перед уходом (как раньше делала верхняя кнопка)
+  const idx=activeView?STEP_ORDER.indexOf(activeView):0;
+  const nextIdx=idx+dir;
+  if(nextIdx<0||nextIdx>=STEP_ORDER.length){ showView('dashboard'); return; }
+  showView(STEP_ORDER[nextIdx]);
+}
+document.getElementById('sub-nav-back').onclick=()=>stepNav(-1);
+document.getElementById('sub-nav-next').onclick=()=>stepNav(1);
 document.addEventListener('click',(e)=>{
   const a=e.target.closest('[data-nav]');
   if(!a) return;
@@ -2466,17 +2494,6 @@ function makeRecentThumb(snapshot){
   finally{ slides=savedSlides; format=savedFormat; category=savedCategory; numStart=savedNumStart; }
 }
 window.Dashboard=(function(){
-  function renderProject(){
-    const total=slides.length;
-    const filled=slides.filter(s=>(s.title&&s.title.trim())||(s.body&&s.body.trim())).length;
-    const pct=total?Math.round(filled/total*100):0;
-    document.getElementById('da-project-title').textContent=CAT_RU[category]||'Карусель';
-    document.getElementById('da-project-subtitle').textContent=`Карусель • ${total} слайдов`;
-    document.getElementById('da-project-slides-label').textContent=`${filled} / ${total} слайдов заполнено`;
-    document.getElementById('da-project-percent').textContent=pct+'%';
-    document.getElementById('da-project-bar').style.width=pct+'%';
-    document.getElementById('da-project-status').textContent=pct>=100?'Готово':(pct===0?'Черновик':'В работе');
-  }
   const TPL_BG_HEX=BG_HEX;
   function renderRecentFiles(){
     let arr=[]; try{ arr=JSON.parse(localStorage.getItem(RECENT_KEY)||'[]'); }catch(e){}
@@ -2519,7 +2536,13 @@ window.Dashboard=(function(){
       row.onclick=()=>{
         if(!r.snapshot) return;
         if(!confirm('Открыть «'+r.title+'»? Текущая карусель будет заменена.')) return;
-        try{ applyFullImport(r.snapshot); saveState(); renderProject(); }catch(err){ alert('Не удалось открыть: '+err.message); }
+        try{
+          applyFullImport(r.snapshot);
+          setCurrentProjectUuid(null);
+          saveState();
+          persistCurrentDraft();
+          showView('structure');
+        }catch(err){ alert('Не удалось открыть: '+err.message); }
       };
       wrap.appendChild(row);
     });
@@ -2570,6 +2593,8 @@ window.Dashboard=(function(){
     document.querySelectorAll('#da-format-picker [data-fmt]').forEach(btn=>{
       btn.addEventListener('click',()=>{
         format=btn.dataset.fmt;
+        slides=[]; current=0;
+        setCurrentProjectUuid(null); // новый пост — не продолжение предыдущего проекта
         _openImportOnEnter=true;
         saveState();
         showView('structure');
@@ -2583,8 +2608,7 @@ window.Dashboard=(function(){
       const f=e.target.files[0]; if(!f) return;
       importFileByExt(f,(err,info)=>{
         if(err){ alert('Не удалось прочитать файл: '+err.message); return; }
-        saveState(); renderProject(); renderSchedule();
-        alert('Проект загружен ('+info.type.toUpperCase()+'): '+slides.length+' слайдов.');
+        finalizeOpenedImport(info);
       });
       e.target.value='';
     });
@@ -2597,7 +2621,7 @@ window.Dashboard=(function(){
   }
   let inited=false;
   return {
-    onEnter(){ if(!inited){ initOnce(); inited=true; } renderProject(); renderTemplates(document.getElementById('da-tpl-search').value); renderSchedule(); renderRecentFiles(); }
+    onEnter(){ if(!inited){ initOnce(); inited=true; } renderTemplates(document.getElementById('da-tpl-search').value); renderSchedule(); renderRecentFiles(); }
   };
 })();
 
@@ -2613,9 +2637,10 @@ window.Projects=(function(){
     try{ return (p.payload&&Array.isArray(p.payload.slides))?p.payload.slides.length:0; }catch(e){ return 0; }
   }
   const PREFS_KEY='garipov_projects_prefs_v1';
+  const DEFAULT_PREFS={sort:'updated_desc',group:false,view:'list',filterStatus:'all'};
   function getPrefs(){
-    try{ return Object.assign({sort:'updated_desc',group:false,view:'list'},JSON.parse(localStorage.getItem(PREFS_KEY)||'{}')); }
-    catch(e){ return {sort:'updated_desc',group:false,view:'list'}; }
+    try{ return Object.assign({},DEFAULT_PREFS,JSON.parse(localStorage.getItem(PREFS_KEY)||'{}')); }
+    catch(e){ return Object.assign({},DEFAULT_PREFS); }
   }
   function setPrefs(p){ try{ localStorage.setItem(PREFS_KEY,JSON.stringify(p)); }catch(e){} }
   function sortList(arr,sort){
@@ -2652,6 +2677,7 @@ window.Projects=(function(){
         <h3 class="font-headline-md text-base truncate text-on-surface flex items-center gap-1.5">
           <span class="truncate">${esc(p.title||'Без названия')}</span>
           ${p.isAuto?'<span class="shrink-0 text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-primary/15 text-primary font-label-sm">авто</span>':''}
+          ${p.published?'<span class="shrink-0 text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-500 font-label-sm flex items-center gap-0.5"><span class="material-symbols-outlined text-[10px]">check_circle</span>выложено</span>':''}
         </h3>
         <p class="text-on-surface-variant text-[11px] opacity-70">${fmtDate(p.updated_at)} · ${cnt} сл.${histCount?' · '+histCount+' верс.':''}</p>`;
     const actions=document.createElement('div');
@@ -2683,7 +2709,10 @@ window.Projects=(function(){
     const chip=document.createElement('div');
     chip.className='absolute top-1.5 left-1.5 right-1.5 flex items-center justify-between gap-1';
     chip.innerHTML=`<span class="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-black/50 text-white truncate">${esc(CAT_RU[p.category]||p.category||'')}</span>
-        ${p.isAuto?'<span class="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-primary/80 text-on-primary shrink-0">авто</span>':''}`;
+        <span class="flex items-center gap-1 shrink-0">
+        ${p.published?'<span class="material-symbols-outlined text-[14px]" style="color:#4ade80">check_circle</span>':''}
+        ${p.isAuto?'<span class="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-primary/80 text-on-primary">авто</span>':''}
+        </span>`;
     const caption=document.createElement('div');
     caption.className='absolute bottom-0 left-0 right-0 p-2 pt-6 bg-gradient-to-t from-black/75 to-transparent';
     caption.innerHTML=`<p class="text-white text-[12px] font-label-md truncate">${esc(p.title||'Без названия')}</p>
@@ -2720,9 +2749,19 @@ window.Projects=(function(){
       : 'Хранилище: память браузера. Делайте бэкап кнопкой «Бэкап».';
     list.innerHTML='';
     if(!all.length){ empty.style.display='block'; return; }
-    empty.style.display='none';
     const prefs=getPrefs();
-    const sorted=sortList(all,prefs.sort);
+    const filtered=prefs.filterStatus==='published'?all.filter(p=>p.published)
+      :prefs.filterStatus==='unpublished'?all.filter(p=>!p.published)
+      :all;
+    if(!filtered.length){
+      empty.style.display='block';
+      empty.textContent=prefs.filterStatus==='all'
+        ?'Пока нет сохранённых проектов — начните пост, он появится тут сам.'
+        :'Нет постов с таким статусом.';
+      return;
+    }
+    empty.style.display='none';
+    const sorted=sortList(filtered,prefs.sort);
     const build=prefs.view==='grid'?buildGridCard:buildListCard;
     const wrapClass=prefs.view==='grid'?'grid grid-cols-3 gap-2':'space-y-sm';
     if(prefs.group){
@@ -2791,6 +2830,7 @@ window.Projects=(function(){
   function reflectViewControls(){
     const prefs=getPrefs();
     const sortEl=document.getElementById('pr-sort'); if(sortEl) sortEl.value=prefs.sort;
+    const filterEl=document.getElementById('pr-filter-status'); if(filterEl) filterEl.value=prefs.filterStatus;
     const groupBtn=document.getElementById('pr-group-toggle');
     if(groupBtn) groupBtn.classList.toggle('bg-primary/15',prefs.group), groupBtn.classList.toggle('text-primary',prefs.group);
     const lBtn=document.getElementById('pr-view-list'), gBtn=document.getElementById('pr-view-grid');
@@ -2800,10 +2840,12 @@ window.Projects=(function(){
     }
   }
   function initOnce(){
-    document.getElementById('pr-btn-save-current').onclick=saveCurrent;
-    // ── Сортировка, группировка, вид отображения ──
+    // ── Сортировка, фильтр, группировка, вид отображения ──
     document.getElementById('pr-sort').onchange=(e)=>{
       const prefs=getPrefs(); prefs.sort=e.target.value; setPrefs(prefs); render();
+    };
+    document.getElementById('pr-filter-status').onchange=(e)=>{
+      const prefs=getPrefs(); prefs.filterStatus=e.target.value; setPrefs(prefs); render();
     };
     document.getElementById('pr-group-toggle').onclick=()=>{
       const prefs=getPrefs(); prefs.group=!prefs.group; setPrefs(prefs); reflectViewControls(); render();
@@ -3695,10 +3737,6 @@ window.Editor=(function(){
       e.currentTarget.classList.toggle('text-primary',_safeZoneOn);
       drawSafeZone();
     };
-    document.getElementById('ed-btn-check').onclick=()=>{
-      tbSnapshot();
-      showView('publish');
-    };
     document.getElementById('ed-btn-templates').onclick=()=>{
       TemplatesUI.open('apply',()=>{ render(); tbSnapshot(); },slides[current].type);
     };
@@ -4380,14 +4418,22 @@ window.Publish=(function(){
       }catch(e){ capEl.select(); document.execCommand('copy'); }
     };
     document.getElementById('pu-btn-save-project').onclick=()=>{
-      const btn=document.getElementById('pu-btn-save-project');
+      const label=document.getElementById('pu-btn-save-project-label');
       try{
         const r=quickSaveProject();
         if(!r) return; // пользователь отменил ввод имени
-        const old=btn.innerHTML;
-        btn.innerHTML='<span class="material-symbols-outlined" style="font-variation-settings:\'FILL\' 1">check_circle</span>';
-        setTimeout(()=>btn.innerHTML=old,1200);
+        const old=label.textContent;
+        label.textContent='Сохранено';
+        setTimeout(()=>label.textContent=old,1200);
       }catch(err){ alert(err.message); }
+    };
+    document.getElementById('pu-published-check').onchange=(e)=>{
+      const cur=getCurrentProjectUuid();
+      if(!cur){ e.target.checked=false; alert('Сначала сохраните пост — добавьте хотя бы один слайд.'); return; }
+      const p=Storage.get(cur);
+      if(!p){ e.target.checked=false; return; }
+      p.published=e.target.checked;
+      Storage.save(p);
     };
     document.getElementById('pu-btn-download-all').onclick=()=>{
       document.getElementById('dl-all-choice-modal').classList.remove('hidden');
@@ -4447,6 +4493,9 @@ window.Publish=(function(){
       document.getElementById('pu-e-post-caption').value=globalPostCaption;
       updateCaptionCount();
       renderThumbs();
+      const cur=getCurrentProjectUuid();
+      const p=cur?Storage.get(cur):null;
+      document.getElementById('pu-published-check').checked=!!(p&&p.published);
     }
   };
 })();
@@ -4772,8 +4821,7 @@ html.${id} #tpl-modal>div,html.${id} #dl-result-modal>div,html.${id} #dl-all-cho
   function importProject(file){
     importFileByExt(file,(err,info)=>{
       if(err){ alert('Не удалось прочитать файл: '+err.message); return; }
-      saveState();
-      alert('Проект загружен ('+info.type.toUpperCase()+'): '+slides.length+' слайдов.');
+      finalizeOpenedImport(info);
     });
   }
   function resetAll(){
