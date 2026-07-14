@@ -13,7 +13,14 @@ const PRECACHE_URLS = [
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
-    caches.open(CACHE_VERSION).then(cache => cache.addAll(PRECACHE_URLS))
+    caches.open(CACHE_VERSION).then(cache =>
+      // Кэшируем по отдельности, а не addAll(): один недоступный файл
+      // (например, страница открыта не с корня сайта) не должен ронять
+      // установку всего service worker'а.
+      Promise.all(PRECACHE_URLS.map(url =>
+        cache.add(url).catch(err => console.warn('SW: не удалось закэшировать', url, err))
+      ))
+    )
   );
   self.skipWaiting();
 });
