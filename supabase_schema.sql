@@ -48,6 +48,29 @@ create policy "update own projects"
 -- Удаление не даём вообще — используем soft-delete (deleted=true через update).
 -- Так синк между устройствами не теряет записи молча.
 
+-- ── Доп. данные (недавние файлы, шаблоны слайдов/подписи, расписание публикаций) ──
+-- Универсальная таблица «kind → data» на пользователя, чтобы не заводить
+-- по отдельной таблице на каждый мелкий набор данных.
+create table if not exists public.user_blobs (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  kind text not null,
+  data jsonb not null default '[]'::jsonb,
+  updated_at bigint not null,
+  primary key (user_id, kind)
+);
+
+alter table public.user_blobs enable row level security;
+
+drop policy if exists "select own blobs" on public.user_blobs;
+create policy "select own blobs" on public.user_blobs for select using (auth.uid() = user_id);
+drop policy if exists "insert own blobs" on public.user_blobs;
+create policy "insert own blobs" on public.user_blobs for insert with check (auth.uid() = user_id);
+drop policy if exists "update own blobs" on public.user_blobs;
+create policy "update own blobs" on public.user_blobs for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- Быстрая выборка "мои непроектные данные"
+create index if not exists user_blobs_user_idx on public.user_blobs (user_id);
+
 -- ── Проверка после выполнения ──
 -- 1. Table Editor → projects → должна быть пустая таблица с колонками выше.
 -- 2. Authentication → Providers → Email → включить "Enable Email provider"
