@@ -1221,7 +1221,7 @@ const CAT_PALETTES={
 /* Версия приложения — показывается внизу Настроек. Бампать вручную при
    каждой значимой правке (следующий за этим сообщением коммит и все
    последующие) — формат MAJOR.MINOR.PATCH, дата для ориентира. */
-const APP_VERSION='1.1.1'; // 2026-07-14 — фикс: заголовок карточки везде из контента поста + миграция старых записей
+const APP_VERSION='1.1.2'; // 2026-07-14 — цветовые акценты категорий на карточках Недавнего/Проектов
 const CAT_RU={symptom:'Симптом/Диагноз',myth:'Разбор мифа',prevent:'Профилактика/Чеклист',
   habit:'Привычка/Совет',delicate:'Деликатные темы',qa:'Вопрос-ответ',
   personal:'Личное/О враче',review:'Отзыв',oncology:'Онкология'};
@@ -1376,6 +1376,13 @@ function getEmojiImgHtml(emoji,sizePx){
 }
 const FORMAT_SIZE={post:{w:340,h:340,ew:1080,eh:1080},story:{w:250,h:445,ew:1080,eh:1920},reel:{w:250,h:445,ew:1080,eh:1920}};
 function fmtSize(fmt){ return FORMAT_SIZE[fmt]||FORMAT_SIZE.post; }
+// Акцентный цвет категории для карточек «Недавнее»/«Проекты» — берём тот же цвет
+// обложки, что и в самом дизайне карусели (CAT_PALETTES), а не отдельную палитру,
+// чтобы цвет карточки совпадал с тем, что человек увидит внутри поста.
+function catAccentColor(cat){
+  const key=cat&&CAT_PALETTES[cat]&&CAT_PALETTES[cat].cover;
+  return (key&&BG_HEX[key])||'#8a8a8a';
+}
 function safeCategory(){return CAT_PALETTES[category]?category:'symptom';}
 function validCategory(cat){ return CAT_RU[cat]?cat:'symptom'; }
 
@@ -2487,6 +2494,7 @@ window.Dashboard=(function(){
       const dt=new Date(r.date).toLocaleString('ru-RU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
       const meta=ACTION_META[r.action]||{icon:'draft',label:''};
       const row=document.createElement('div'); row.className='glass-card p-md rounded-xl flex items-center gap-sm cursor-pointer hover:bg-white/10';
+      row.style.boxShadow='inset 3px 0 0 0 '+catAccentColor(r.snapshot&&r.snapshot.category);
       const thumbBox=document.createElement('div');
       thumbBox.className='w-[104px] h-[104px] rounded-lg flex-shrink-0 overflow-hidden bg-surface-container-highest relative';
       const frameEl=makeRecentThumb(r.snapshot);
@@ -2621,9 +2629,10 @@ window.Projects=(function(){
     }
   }
   // Карточка списка: обложка слева, название/категория/тип/дата справа, действия справа
-  function buildListCard(p){
+  function buildListCard(p,showAccent){
     const card=document.createElement('div');
     card.className='glass-card rounded-2xl p-md flex items-center gap-3 border border-white/5';
+    if(showAccent) card.style.boxShadow='inset 3px 0 0 0 '+catAccentColor(p.category);
     const cnt=slideCount(p);
     const histCount=Array.isArray(p.history)?p.history.length:0;
     const thumbBox=document.createElement('div');
@@ -2655,10 +2664,11 @@ window.Projects=(function(){
     return card;
   }
   // Карточка сетки: обложка на весь тайл, категория/тип чипом сверху, название затемнённой подписью снизу
-  function buildGridCard(p){
+  function buildGridCard(p,showAccent){
     const card=document.createElement('div');
     card.className='relative rounded-2xl overflow-hidden aspect-square bg-surface-container-highest border border-white/5 cursor-pointer group';
     card.dataset.open=p.uuid;
+    if(showAccent) card.style.boxShadow='inset 0 3px 0 0 '+catAccentColor(p.category);
     const thumbBox=document.createElement('div');
     thumbBox.className='absolute inset-0 flex items-center justify-center';
     const frameEl=makeRecentThumb(p.payload);
@@ -2726,12 +2736,13 @@ window.Projects=(function(){
         heading.textContent=CAT_RU[cat]||cat||'Без категории';
         list.appendChild(heading);
         const wrap=document.createElement('div'); wrap.className=wrapClass;
-        byCategory[cat].forEach(p=>wrap.appendChild(build(p)));
+        // Группировка уже разносит по категориям заголовками — цветовой акцент внутри не нужен
+        byCategory[cat].forEach(p=>wrap.appendChild(build(p,false)));
         list.appendChild(wrap);
       });
     }else{
       const wrap=document.createElement('div'); wrap.className=wrapClass;
-      sorted.forEach(p=>wrap.appendChild(build(p)));
+      sorted.forEach(p=>wrap.appendChild(build(p,true)));
       list.appendChild(wrap);
     }
   }
