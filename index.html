@@ -437,6 +437,22 @@ input[type=range]::-webkit-slider-runnable-track{width:100%;height:4px;cursor:po
         <h2 class="font-headline-md text-headline-md">Мои проекты</h2>
         <span id="pr-count" class="text-on-surface-variant font-label-sm">0</span>
       </div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <select id="pr-sort" class="bg-surface-container rounded-lg px-2.5 py-1.5 text-on-surface font-label-sm outline-none border border-white/10">
+          <option value="updated_desc">Сначала новые</option>
+          <option value="updated_asc">Сначала старые</option>
+          <option value="title_asc">По названию А-Я</option>
+          <option value="title_desc">По названию Я-А</option>
+          <option value="slides_desc">Сначала больше слайдов</option>
+        </select>
+        <button id="pr-group-toggle" class="flex items-center gap-1 bg-surface-container rounded-lg px-2.5 py-1.5 text-on-surface-variant font-label-sm border border-white/10 active:scale-95">
+          <span class="material-symbols-outlined text-[16px]">category</span>По категориям
+        </button>
+        <div class="ml-auto flex items-center gap-1 bg-surface-container rounded-lg p-1 border border-white/10">
+          <button id="pr-view-list" title="Список" class="p-1.5 rounded-md text-on-surface-variant"><span class="material-symbols-outlined text-[18px]">view_list</span></button>
+          <button id="pr-view-grid" title="Сетка" class="p-1.5 rounded-md text-on-surface-variant"><span class="material-symbols-outlined text-[18px]">grid_view</span></button>
+        </div>
+      </div>
       <div class="space-y-sm" id="pr-list"></div>
       <p id="pr-empty" class="text-on-surface-variant font-label-sm text-center py-8" style="display:none">Пока нет сохранённых проектов.<br>Сохраните текущую карусель кнопкой выше.</p>
     </section>
@@ -2553,6 +2569,100 @@ window.Projects=(function(){
   function slideCount(p){
     try{ return (p.payload&&Array.isArray(p.payload.slides))?p.payload.slides.length:0; }catch(e){ return 0; }
   }
+  const PREFS_KEY='garipov_projects_prefs_v1';
+  function getPrefs(){
+    try{ return Object.assign({sort:'updated_desc',group:false,view:'list'},JSON.parse(localStorage.getItem(PREFS_KEY)||'{}')); }
+    catch(e){ return {sort:'updated_desc',group:false,view:'list'}; }
+  }
+  function setPrefs(p){ try{ localStorage.setItem(PREFS_KEY,JSON.stringify(p)); }catch(e){} }
+  function sortList(arr,sort){
+    const a=arr.slice();
+    switch(sort){
+      case 'updated_asc': return a.sort((x,y)=>(x.updated_at||0)-(y.updated_at||0));
+      case 'title_asc': return a.sort((x,y)=>(x.title||'').localeCompare(y.title||'','ru'));
+      case 'title_desc': return a.sort((x,y)=>(y.title||'').localeCompare(x.title||'','ru'));
+      case 'slides_desc': return a.sort((x,y)=>slideCount(y)-slideCount(x));
+      default: return a.sort((x,y)=>(y.updated_at||0)-(x.updated_at||0)); // updated_desc
+    }
+  }
+  // Карточка списка: обложка слева, название/категория/тип/дата справа, действия справа
+  function buildListCard(p){
+    const card=document.createElement('div');
+    card.className='glass-card rounded-2xl p-md flex items-center gap-3 border border-white/5';
+    const cnt=slideCount(p);
+    const histCount=Array.isArray(p.history)?p.history.length:0;
+    const thumbBox=document.createElement('div');
+    thumbBox.className='w-14 h-14 rounded-xl flex-shrink-0 overflow-hidden bg-surface-container-highest relative';
+    const frameEl=makeRecentThumb(p.payload);
+    if(frameEl){
+      const fS=fmtSize((p.payload&&p.payload.format)||p.format||'post');
+      frameEl.style.transform=`scale(${56/fS.w})`; frameEl.style.transformOrigin='top left';
+      thumbBox.appendChild(frameEl);
+    }else{
+      thumbBox.innerHTML=`<div class="w-full h-full flex items-center justify-center"><span class="material-symbols-outlined text-secondary text-xl">draft</span></div>`;
+    }
+    const info=document.createElement('div');
+    info.className='min-w-0 flex-1 cursor-pointer'; info.dataset.open=p.uuid;
+    info.innerHTML=`
+        <p class="text-on-surface-variant font-label-sm truncate uppercase tracking-wide text-[10px] opacity-80">${CAT_RU[p.category]||p.category||''} · ${FMT_RU[p.format]||p.format||''}</p>
+        <h3 class="font-headline-md text-base truncate text-on-surface flex items-center gap-1.5">
+          <span class="truncate">${esc(p.title||'Без названия')}</span>
+          ${p.isAuto?'<span class="shrink-0 text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-primary/15 text-primary font-label-sm">авто</span>':''}
+        </h3>
+        <p class="text-on-surface-variant text-[11px] opacity-70">${fmtDate(p.updated_at)} · ${cnt} сл.${histCount?' · '+histCount+' верс.':''}</p>`;
+    const actions=document.createElement('div');
+    actions.className='flex gap-1 shrink-0';
+    actions.innerHTML=`
+        ${histCount?`<button data-history="${p.uuid}" title="История версий" class="p-2 rounded-full glass-card text-on-surface-variant hover:opacity-80 active:scale-95"><span class="material-symbols-outlined text-[18px]">history</span></button>`:''}
+        <button data-rename="${p.uuid}" title="Переименовать" class="p-2 rounded-full glass-card text-on-surface-variant hover:opacity-80 active:scale-95"><span class="material-symbols-outlined text-[18px]">edit</span></button>
+        <button data-del="${p.uuid}" title="Удалить" class="p-2 rounded-full glass-card text-error hover:opacity-80 active:scale-95"><span class="material-symbols-outlined text-[18px]">delete</span></button>`;
+    card.append(thumbBox,info,actions);
+    return card;
+  }
+  // Карточка сетки: обложка на весь тайл, категория/тип чипом сверху, название затемнённой подписью снизу
+  function buildGridCard(p){
+    const card=document.createElement('div');
+    card.className='relative rounded-2xl overflow-hidden aspect-square bg-surface-container-highest border border-white/5 cursor-pointer group';
+    card.dataset.open=p.uuid;
+    const thumbBox=document.createElement('div');
+    thumbBox.className='absolute inset-0 flex items-center justify-center';
+    const frameEl=makeRecentThumb(p.payload);
+    if(frameEl){
+      const fS=fmtSize((p.payload&&p.payload.format)||p.format||'post');
+      const scale=Math.max(card.offsetWidth||140,140)/fS.w;
+      frameEl.style.transform=`scale(${scale})`; frameEl.style.transformOrigin='center';
+      thumbBox.appendChild(frameEl);
+    }else{
+      thumbBox.innerHTML=`<span class="material-symbols-outlined text-secondary text-3xl">draft</span>`;
+    }
+    const chip=document.createElement('div');
+    chip.className='absolute top-1.5 left-1.5 right-1.5 flex items-center justify-between gap-1';
+    chip.innerHTML=`<span class="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-black/50 text-white truncate">${esc(CAT_RU[p.category]||p.category||'')}</span>
+        ${p.isAuto?'<span class="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-primary/80 text-on-primary shrink-0">авто</span>':''}`;
+    const caption=document.createElement('div');
+    caption.className='absolute bottom-0 left-0 right-0 p-2 pt-6 bg-gradient-to-t from-black/75 to-transparent';
+    caption.innerHTML=`<p class="text-white text-[12px] font-label-md truncate">${esc(p.title||'Без названия')}</p>
+        <p class="text-white/70 text-[10px] truncate">${FMT_RU[p.format]||p.format||''} · ${slideCount(p)} сл.</p>`;
+    const menuBtn=document.createElement('button');
+    menuBtn.className='absolute top-1.5 right-1.5 p-1 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity';
+    menuBtn.innerHTML='<span class="material-symbols-outlined text-[16px]">more_vert</span>';
+    menuBtn.onclick=(e)=>{
+      e.stopPropagation();
+      const items=[];
+      const histCount=Array.isArray(p.history)?p.history.length:0;
+      if(histCount) items.push({icon:'history',label:'История версий',onClick:()=>openHistory(menuBtn,p.uuid)});
+      items.push({icon:'edit',label:'Переименовать',onClick:()=>{
+        const name=prompt('Новое название:',p.title||''); if(name===null) return;
+        p.title=name.trim()||p.title; Storage.save(p); render();
+      }});
+      items.push({icon:'delete',label:'Удалить',onClick:()=>{
+        if(confirm('Удалить проект «'+(p.title||'')+'»?')){ Storage.remove(p.uuid); render(); }
+      }});
+      showPopoverMenu(menuBtn,items);
+    };
+    card.append(thumbBox,chip,caption,menuBtn);
+    return card;
+  }
   function render(){
     const list=document.getElementById('pr-list');
     const empty=document.getElementById('pr-empty');
@@ -2566,40 +2676,29 @@ window.Projects=(function(){
     list.innerHTML='';
     if(!all.length){ empty.style.display='block'; return; }
     empty.style.display='none';
-    all.forEach(p=>{
-      const card=document.createElement('div');
-      card.className='glass-card rounded-2xl p-md flex items-center gap-3 border border-white/5';
-      const cnt=slideCount(p);
-      const histCount=Array.isArray(p.history)?p.history.length:0;
-      // Обложка — превью первого слайда проекта, чтобы было видно, что это за файл
-      const thumbBox=document.createElement('div');
-      thumbBox.className='w-14 h-14 rounded-xl flex-shrink-0 overflow-hidden bg-surface-container-highest relative';
-      const frameEl=makeRecentThumb(p.payload);
-      if(frameEl){
-        const fS=fmtSize((p.payload&&p.payload.format)||p.format||'post');
-        frameEl.style.transform=`scale(${56/fS.w})`; frameEl.style.transformOrigin='top left';
-        thumbBox.appendChild(frameEl);
-      }else{
-        thumbBox.innerHTML=`<div class="w-full h-full flex items-center justify-center"><span class="material-symbols-outlined text-secondary text-xl">draft</span></div>`;
-      }
-      const info=document.createElement('div');
-      info.className='min-w-0 flex-1 cursor-pointer'; info.dataset.open=p.uuid;
-      info.innerHTML=`
-          <h3 class="font-headline-md text-base truncate text-on-surface flex items-center gap-1.5">
-            <span class="truncate">${esc(p.title||'Без названия')}</span>
-            ${p.isAuto?'<span class="shrink-0 text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-primary/15 text-primary font-label-sm">авто</span>':''}
-          </h3>
-          <p class="text-on-surface-variant font-label-sm truncate">${FMT_RU[p.format]||p.format||''} · ${CAT_RU[p.category]||p.category||''} · ${cnt} сл.</p>
-          <p class="text-on-surface-variant text-[11px] opacity-70">${fmtDate(p.updated_at)}${histCount?' · '+histCount+' верс.':''}</p>`;
-      const actions=document.createElement('div');
-      actions.className='flex gap-1 shrink-0';
-      actions.innerHTML=`
-          ${histCount?`<button data-history="${p.uuid}" title="История версий" class="p-2 rounded-full glass-card text-on-surface-variant hover:opacity-80 active:scale-95"><span class="material-symbols-outlined text-[18px]">history</span></button>`:''}
-          <button data-rename="${p.uuid}" title="Переименовать" class="p-2 rounded-full glass-card text-on-surface-variant hover:opacity-80 active:scale-95"><span class="material-symbols-outlined text-[18px]">edit</span></button>
-          <button data-del="${p.uuid}" title="Удалить" class="p-2 rounded-full glass-card text-error hover:opacity-80 active:scale-95"><span class="material-symbols-outlined text-[18px]">delete</span></button>`;
-      card.append(thumbBox,info,actions);
-      list.appendChild(card);
-    });
+    const prefs=getPrefs();
+    const sorted=sortList(all,prefs.sort);
+    const build=prefs.view==='grid'?buildGridCard:buildListCard;
+    const wrapClass=prefs.view==='grid'?'grid grid-cols-3 gap-2':'space-y-sm';
+    if(prefs.group){
+      const byCategory={};
+      sorted.forEach(p=>{ const k=p.category||'other'; (byCategory[k]=byCategory[k]||[]).push(p); });
+      // Порядок групп — по первому вхождению в уже отсортированном списке (сохраняет выбранную сортировку внутри групп)
+      const order=[]; sorted.forEach(p=>{ const k=p.category||'other'; if(!order.includes(k)) order.push(k); });
+      order.forEach(cat=>{
+        const heading=document.createElement('h4');
+        heading.className='text-on-surface-variant font-label-sm uppercase tracking-wide text-[11px] pt-2 first:pt-0';
+        heading.textContent=CAT_RU[cat]||cat||'Без категории';
+        list.appendChild(heading);
+        const wrap=document.createElement('div'); wrap.className=wrapClass;
+        byCategory[cat].forEach(p=>wrap.appendChild(build(p)));
+        list.appendChild(wrap);
+      });
+    }else{
+      const wrap=document.createElement('div'); wrap.className=wrapClass;
+      sorted.forEach(p=>wrap.appendChild(build(p)));
+      list.appendChild(wrap);
+    }
   }
   function fmtDateFull(ts){
     if(!ts) return '';
@@ -2643,8 +2742,32 @@ window.Projects=(function(){
       st.textContent=text+' · '+time;
     }else st.textContent=text;
   }
+  function reflectViewControls(){
+    const prefs=getPrefs();
+    const sortEl=document.getElementById('pr-sort'); if(sortEl) sortEl.value=prefs.sort;
+    const groupBtn=document.getElementById('pr-group-toggle');
+    if(groupBtn) groupBtn.classList.toggle('bg-primary/15',prefs.group), groupBtn.classList.toggle('text-primary',prefs.group);
+    const lBtn=document.getElementById('pr-view-list'), gBtn=document.getElementById('pr-view-grid');
+    if(lBtn&&gBtn){
+      lBtn.classList.toggle('bg-primary/20',prefs.view==='list'); lBtn.classList.toggle('text-primary',prefs.view==='list');
+      gBtn.classList.toggle('bg-primary/20',prefs.view==='grid'); gBtn.classList.toggle('text-primary',prefs.view==='grid');
+    }
+  }
   function initOnce(){
     document.getElementById('pr-btn-save-current').onclick=saveCurrent;
+    // ── Сортировка, группировка, вид отображения ──
+    document.getElementById('pr-sort').onchange=(e)=>{
+      const prefs=getPrefs(); prefs.sort=e.target.value; setPrefs(prefs); render();
+    };
+    document.getElementById('pr-group-toggle').onclick=()=>{
+      const prefs=getPrefs(); prefs.group=!prefs.group; setPrefs(prefs); reflectViewControls(); render();
+    };
+    document.getElementById('pr-view-list').onclick=()=>{
+      const prefs=getPrefs(); prefs.view='list'; setPrefs(prefs); reflectViewControls(); render();
+    };
+    document.getElementById('pr-view-grid').onclick=()=>{
+      const prefs=getPrefs(); prefs.view='grid'; setPrefs(prefs); reflectViewControls(); render();
+    };
     document.getElementById('pr-btn-export').onclick=()=>{
       const cnt=Storage.getAll().length;
       if(!cnt){ alert('Библиотека пуста — нечего экспортировать.'); return; }
@@ -2707,6 +2830,7 @@ window.Projects=(function(){
   return {
     onEnter(){
       if(!inited){ initOnce(); inited=true; }
+      reflectViewControls();
       render();
       const box=document.getElementById('pr-sync-box');
       if(box) box.style.display=Sync.isConfigured()?'block':'none';
