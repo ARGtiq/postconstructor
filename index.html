@@ -1221,7 +1221,7 @@ const CAT_PALETTES={
 /* Версия приложения — показывается внизу Настроек. Бампать вручную при
    каждой значимой правке (следующий за этим сообщением коммит и все
    последующие) — формат MAJOR.MINOR.PATCH, дата для ориентира. */
-const APP_VERSION='1.1.0'; // 2026-07-14 — контраст кнопок, номер версии, история проектов
+const APP_VERSION='1.1.1'; // 2026-07-14 — фикс: заголовок карточки везде из контента поста + миграция старых записей
 const CAT_RU={symptom:'Симптом/Диагноз',myth:'Разбор мифа',prevent:'Профилактика/Чеклист',
   habit:'Привычка/Совет',delicate:'Деликатные темы',qa:'Вопрос-ответ',
   personal:'Личное/О враче',review:'Отзыв',oncology:'Онкология'};
@@ -2177,6 +2177,26 @@ function autoSaveDraftToCategory(){
   });
   if(id){ map[category]=id; _setCatAutosaveMap(map); }
 }
+// Одноразовая миграция: раньше проекты сохранялись с заголовком = название категории
+// («Профилактика/Чеклист»), даже когда в слайдах уже был свой текст. Здесь для уже
+// существующих записей, у которых заголовок совпадает с названием категории (то есть
+// он никогда не был осмысленным), пробуем один раз пересчитать его из содержимого слайдов.
+// Не трогает записи, где заголовок мог быть таким же по совпадению названным вручную —
+// перезаписывает только если удаётся вывести реально другой заголовок из контента.
+const TITLE_MIGRATION_KEY='garipov_title_migration_v1_done';
+function migrateStaleProjectTitles(){
+  try{
+    if(localStorage.getItem(TITLE_MIGRATION_KEY)) return;
+    Storage.getAll().forEach(p=>{
+      const catName=CAT_RU[p.category]||p.category;
+      if(p.title!==catName) return; // заголовок уже осмысленный — не трогаем
+      const derived=deriveTitleFromSlides((p.payload&&p.payload.slides)||[],catName);
+      if(derived&&derived!==catName){ p.title=derived; Storage.save(p); }
+    });
+    localStorage.setItem(TITLE_MIGRATION_KEY,'1');
+  }catch(e){}
+}
+migrateStaleProjectTitles();
 loadState();
 
 /* ───────────────────────── ROUTER ───────────────────────── */
@@ -2743,7 +2763,7 @@ window.Projects=(function(){
   }
   function saveCurrent(){
     if(!slides||!slides.length){ alert('Нет слайдов для сохранения.'); return; }
-    const name=prompt('Название проекта:',CAT_RU[category]||'Карусель');
+    const name=prompt('Название проекта:',deriveTitleFromSlides(slides,CAT_RU[category]||'Карусель'));
     if(name===null) return;
     const id=saveCurrentAsProject(name);
     if(id) render();
