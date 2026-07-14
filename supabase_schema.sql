@@ -3,6 +3,12 @@
 --  Выполнить целиком в Supabase → SQL Editor → New query → Run
 -- ═══════════════════════════════════════════════════════════════════════
 
+-- Миграция: если таблица уже была создана раньше (без колонки history),
+-- этот блок безопасно добавит её, ничего не потеряв. Если таблицы ещё
+-- нет — просто ничего не делает, create table ниже создаст её сразу верно.
+alter table if exists public.projects
+  add column if not exists history jsonb not null default '[]'::jsonb;
+
 create table if not exists public.projects (
   uuid text primary key,
   user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
@@ -10,6 +16,7 @@ create table if not exists public.projects (
   category text,
   format text,
   payload jsonb not null,
+  history jsonb not null default '[]'::jsonb,
   created_at bigint not null,
   updated_at bigint not null,
   deleted boolean not null default false

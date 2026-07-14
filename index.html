@@ -823,7 +823,7 @@ input[type=range]::-webkit-slider-runnable-track{width:100%;height:4px;cursor:po
 <header class="w-full flex justify-between items-center px-margin pt-base pb-base sticky top-0 z-30 backdrop-blur-md border-b border-white/5">
   <button data-nav="structure" aria-label="Go back" class="text-on-surface hover:opacity-80 transition-opacity p-2 -ml-2"><span class="material-symbols-outlined" style="font-variation-settings:'FILL' 0,'wght' 300">arrow_back</span></button>
   <h1 class="font-headline-lg-mobile text-headline-lg-mobile font-bold text-on-surface">Публикация</h1>
-  <div class="w-10"></div>
+  <button id="pu-btn-save-project" title="Сохранить проект в библиотеку" aria-label="Сохранить проект" class="text-on-surface hover:opacity-80 transition-opacity p-2 -mr-2"><span class="material-symbols-outlined" style="font-variation-settings:'FILL' 0,'wght' 300">bookmark_add</span></button>
 </header>
 <main class="flex-1 px-margin pt-md pb-[120px] flex flex-col gap-lg max-w-2xl mx-auto w-full">
   <section class="flex flex-col gap-sm">
@@ -1552,6 +1552,7 @@ const Storage=(()=>{
   // Намеренно НЕ вызывается из importBackup: иначе слияние, пришедшее с сервера при
   // pull, тут же запускало бы push обратно и гоняло бы одни и те же данные по кругу.
   let _onChange=null;
+  const HISTORY_LIMIT=10; // сколько прошлых версий храним на проект (снимок = payload+title+updated_at)
   return {
     uuid,
     hasNative(){ return !!NATIVE; },
@@ -1563,17 +1564,45 @@ const Storage=(()=>{
     },
     get(id){ return this.getAll().find(p=>p.uuid===id)||null; },
     // Создать/обновить. project={title,category,format,payload,...}
+    // При обновлении существующего проекта прошлое состояние (payload+title) уходит
+    // в project.history (новые снимки — в начало, храним последние HISTORY_LIMIT).
+    // Синхронизируется вместе с проектом (см. Sync.push) — история одна на всех устройствах.
     save(project){
       const now=Date.now();
+      const a=_all();
+      const i=project.uuid?a.findIndex(p=>p.uuid===project.uuid):-1;
+      const prev=i>=0?a[i]:null;
       if(!project.uuid) project.uuid=uuid();
-      if(!project.created_at) project.created_at=now;
+      if(!project.created_at) project.created_at=(prev&&prev.created_at)||now;
       project.updated_at=now;
       project.sync_status='local';
-      const a=_all(); const i=a.findIndex(p=>p.uuid===project.uuid);
+      project.history=(prev&&Array.isArray(prev.history))?prev.history.slice():[];
+      if(prev){
+        const prevPayload=typeof prev.payload==='string'?prev.payload:JSON.stringify(prev.payload);
+        const newPayload=typeof project.payload==='string'?project.payload:JSON.stringify(project.payload);
+        if(prevPayload!==newPayload||prev.title!==project.title){
+          project.history.unshift({ title:prev.title||'', category:prev.category, format:prev.format, payload:prev.payload, updated_at:prev.updated_at||now });
+          if(project.history.length>HISTORY_LIMIT) project.history.length=HISTORY_LIMIT;
+        }
+      }
       if(i>=0) a[i]=project; else a.push(project);
       if(!_write(a)) return null; // переполнение — вызывающий покажет ошибку
       if(_onChange) _onChange();
       return project.uuid;
+    },
+    // История версий проекта, новые сверху. [] если проекта нет или истории ещё нет.
+    getHistory(id){
+      const p=_all().find(x=>x.uuid===id);
+      return (p&&Array.isArray(p.history))?p.history.map(_norm):[];
+    },
+    // Откатить проект к версии из истории по индексу (0 — самая свежая прошлая версия).
+    // Текущее состояние перед откатом само уходит в историю — откат не теряет данные.
+    restoreVersion(id,idx){
+      const p=this.get(id);
+      if(!p||!p.history||!p.history[idx]) return false;
+      const snap=p.history[idx];
+      this.save({ uuid:id, title:snap.title, category:snap.category||p.category, format:snap.format||p.format, payload:snap.payload });
+      return true;
     },
     // Мягкое удаление (запись остаётся с deleted=1 — задел под синк)
     remove(id){
@@ -1607,18 +1636,41 @@ const Storage=(()=>{
 })();
 window.Storage=Storage;
 /* Обёртки над текущим форматом проекта (buildFullExport / applyFullImport) */
+// uuid проекта, с которым сейчас синхронизирован открытый в редакторе черновик.
+// null — черновик ещё не сохранён в библиотеку ни разу. Переживает перезагрузку страницы.
+const CUR_PROJECT_KEY='garipov_current_project_uuid';
+function getCurrentProjectUuid(){ try{ return localStorage.getItem(CUR_PROJECT_KEY)||null; }catch(e){ return null; } }
+function setCurrentProjectUuid(id){ try{ id?localStorage.setItem(CUR_PROJECT_KEY,id):localStorage.removeItem(CUR_PROJECT_KEY); }catch(e){} }
 function saveCurrentAsProject(name,existingUuid){
   const payload=buildFullExport();
-  return Storage.save({
+  const id=Storage.save({
     uuid:existingUuid||undefined,
     title:(name&&name.trim())||CAT_RU[category]||'Карусель',
     category, format, payload
   });
+  if(id) setCurrentProjectUuid(id);
+  return id;
+}
+// Быстрое сохранение без диалога: обновляет проект, с которым уже связан черновик,
+// либо (первый раз) просит имя. Используется кнопкой на странице «Публикация».
+function quickSaveProject(){
+  if(!slides||!slides.length) throw new Error('Нет слайдов для сохранения.');
+  const cur=getCurrentProjectUuid();
+  if(cur&&Storage.get(cur)){
+    const existing=Storage.get(cur);
+    const id=saveCurrentAsProject(existing.title,cur);
+    return {id, isNew:false, title:existing.title};
+  }
+  const name=prompt('Название проекта:',CAT_RU[category]||'Карусель');
+  if(name===null) return null;
+  const id=saveCurrentAsProject(name);
+  return {id, isNew:true, title:name};
 }
 function loadProject(id){
   const p=Storage.get(id);
   if(!p||!p.payload) return false;
   applyFullImport(p.payload);
+  setCurrentProjectUuid(id);
   saveState();
   return true;
 }
@@ -1699,6 +1751,7 @@ const Sync=(()=>{
     const rows=local.map(p=>({
       uuid:p.uuid, title:p.title||'', category:p.category||'', format:p.format||'',
       payload:typeof p.payload==='string'?JSON.parse(p.payload):p.payload,
+      history:Array.isArray(p.history)?p.history:[],
       created_at:p.created_at||Date.now(), updated_at:p.updated_at||Date.now(),
       deleted:!!p.deleted
     }));
@@ -2423,18 +2476,40 @@ window.Projects=(function(){
       const card=document.createElement('div');
       card.className='glass-card rounded-2xl p-md flex items-center justify-between gap-3 border border-white/5';
       const cnt=slideCount(p);
+      const histCount=Array.isArray(p.history)?p.history.length:0;
       card.innerHTML=`
         <div class="min-w-0 flex-1 cursor-pointer" data-open="${p.uuid}">
           <h3 class="font-headline-md text-base truncate text-on-surface">${esc(p.title||'Без названия')}</h3>
           <p class="text-on-surface-variant font-label-sm truncate">${FMT_RU[p.format]||p.format||''} · ${CAT_RU[p.category]||p.category||''} · ${cnt} сл.</p>
-          <p class="text-on-surface-variant text-[11px] opacity-70">${fmtDate(p.updated_at)}</p>
+          <p class="text-on-surface-variant text-[11px] opacity-70">${fmtDate(p.updated_at)}${histCount?' · '+histCount+' верс.':''}</p>
         </div>
         <div class="flex gap-1 shrink-0">
+          ${histCount?`<button data-history="${p.uuid}" title="История версий" class="p-2 rounded-full glass-card text-on-surface-variant hover:opacity-80 active:scale-95"><span class="material-symbols-outlined text-[18px]">history</span></button>`:''}
           <button data-rename="${p.uuid}" title="Переименовать" class="p-2 rounded-full glass-card text-on-surface-variant hover:opacity-80 active:scale-95"><span class="material-symbols-outlined text-[18px]">edit</span></button>
           <button data-del="${p.uuid}" title="Удалить" class="p-2 rounded-full glass-card text-error hover:opacity-80 active:scale-95"><span class="material-symbols-outlined text-[18px]">delete</span></button>
         </div>`;
       list.appendChild(card);
     });
+  }
+  function fmtDateFull(ts){
+    if(!ts) return '';
+    return new Date(ts).toLocaleString('ru-RU',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  }
+  function openHistory(anchorEl,id){
+    const p=Storage.get(id); if(!p) return;
+    const hist=Storage.getHistory(id);
+    if(!hist.length){ alert('У этого проекта пока нет истории версий.'); return; }
+    const items=hist.map((snap,idx)=>({
+      icon:'restore',
+      label:(snap.title||'Без названия')+' · '+fmtDateFull(snap.updated_at),
+      onClick:()=>{
+        if(!confirm('Откатить проект к версии от '+fmtDateFull(snap.updated_at)+'?\nТекущее состояние сохранится в историю и не потеряется.')) return;
+        Storage.restoreVersion(id,idx);
+        render();
+        alert('Проект откачен к выбранной версии.');
+      }
+    }));
+    showPopoverMenu(anchorEl,items);
   }
   function openProject(id){
     if(loadProject(id)){
@@ -2490,6 +2565,8 @@ window.Projects=(function(){
       const open=e.target.closest('[data-open]');
       const rn=e.target.closest('[data-rename]');
       const del=e.target.closest('[data-del]');
+      const hist=e.target.closest('[data-history]');
+      if(hist){ e.stopPropagation(); openHistory(hist,hist.dataset.history); return; }
       if(rn){ e.stopPropagation();
         const p=Storage.get(rn.dataset.rename); if(!p) return;
         const name=prompt('Новое название:',p.title||''); if(name===null) return;
@@ -4002,6 +4079,16 @@ window.Publish=(function(){
         btn.innerHTML='<span class="material-symbols-outlined text-primary-container">check</span>Скопировано';
         setTimeout(()=>btn.innerHTML=old,1200);
       }catch(e){ capEl.select(); document.execCommand('copy'); }
+    };
+    document.getElementById('pu-btn-save-project').onclick=()=>{
+      const btn=document.getElementById('pu-btn-save-project');
+      try{
+        const r=quickSaveProject();
+        if(!r) return; // пользователь отменил ввод имени
+        const old=btn.innerHTML;
+        btn.innerHTML='<span class="material-symbols-outlined" style="font-variation-settings:\'FILL\' 1">check_circle</span>';
+        setTimeout(()=>btn.innerHTML=old,1200);
+      }catch(err){ alert(err.message); }
     };
     document.getElementById('pu-btn-download-all').onclick=()=>{
       document.getElementById('dl-all-choice-modal').classList.remove('hidden');
