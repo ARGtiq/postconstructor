@@ -95,6 +95,8 @@ html.theme-light #bottom-nav,html.theme-light #editor-subnav{background:rgba(255
 html.theme-light .emoji-picker,html.theme-light .qmenu,html.theme-light #save-modal>div,html.theme-light #qs-modal>div,
 html.theme-light #cap-tpl-modal>div,html.theme-light #quick-insert-modal>div,html.theme-light #emoji-panel-modal>div,
 html.theme-light #tpl-modal>div,html.theme-light #dl-result-modal>div{background:#f3efe8 !important;color:#2b2620}
+html.theme-light .qmenu-item{color:#2b2620 !important}
+html.theme-light .qmenu-item:hover{background:rgba(0,0,0,.05) !important}
 html.theme-ios{color-scheme:light}
 html.theme-ios body{background-color:#f2f2f7 !important;color:#1c1c1e !important;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text',Manrope,sans-serif !important}
 html.theme-ios .bg-background{background-color:#f2f2f7 !important}
@@ -141,6 +143,8 @@ html.theme-ios .rounded-lg{border-radius:12px !important}
 html.theme-ios .emoji-picker,html.theme-ios .qmenu,html.theme-ios #save-modal>div,html.theme-ios #qs-modal>div,
 html.theme-ios #cap-tpl-modal>div,html.theme-ios #quick-insert-modal>div,html.theme-ios #emoji-panel-modal>div,
 html.theme-ios #tpl-modal>div,html.theme-ios #dl-result-modal>div{background:#f2f2f7 !important;color:#1c1c1e;border-radius:20px !important}
+html.theme-ios .qmenu-item{color:#1c1c1e !important}
+html.theme-ios .qmenu-item:hover{background:rgba(60,60,67,.06) !important}
 body{background-color:#0F0F10;color:#e5e2e3;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
 .glass-card,.glass-panel{background:rgba(255,255,255,.08);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
   border-top:1px solid rgba(255,255,255,.15);border-left:1px solid rgba(255,255,255,.15)}
@@ -1253,7 +1257,7 @@ const CAT_PALETTES={
 /* Версия приложения — показывается внизу Настроек. Бампать вручную при
    каждой значимой правке (следующий за этим сообщением коммит и все
    последующие) — формат MAJOR.MINOR.PATCH, дата для ориентира. */
-const APP_VERSION='1.3.0'; // 2026-07-14 — вкладки в Настройках, синк тем и быстрых вставок, фикс шрифта интерфейса, планирование из Проектов/Публикации, фильтр по формату
+const APP_VERSION='1.3.1'; // 2026-07-15 — фикс popover-меню (не закрывалось), контраст текста меню, редизайн карточек проектов
 const CAT_RU={symptom:'Симптом/Диагноз',myth:'Разбор мифа',prevent:'Профилактика/Чеклист',
   habit:'Привычка/Совет',delicate:'Деликатные темы',qa:'Вопрос-ответ',
   personal:'Личное/О враче',review:'Отзыв',oncology:'Онкология'};
@@ -1414,6 +1418,18 @@ function fmtSize(fmt){ return FORMAT_SIZE[fmt]||FORMAT_SIZE.post; }
 function catAccentColor(cat){
   const key=cat&&CAT_PALETTES[cat]&&CAT_PALETTES[cat].cover;
   return (key&&BG_HEX[key])||'#8a8a8a';
+}
+// Для служебных подписей на карточках (категория/тип, бейджи) — не насильно
+// перекрашивает уже осмысленно оформленный текст: если строка не сплошь ЗАГЛАВНАЯ,
+// оставляет как есть (значит, регистр расставлен намеренно). Если сплошные
+// заглавные — превращает в обычное предложение с заглавной первой буквой.
+function toSentenceCase(str){
+  const s=(str||'').trim();
+  if(!s) return s;
+  const hasLower=/[a-zа-яё]/.test(s);
+  if(hasLower) return s; // уже не сплошной капс — не трогаем
+  const lower=s.toLowerCase();
+  return lower.charAt(0).toUpperCase()+lower.slice(1);
 }
 function safeCategory(){return CAT_PALETTES[category]?category:'symptom';}
 function validCategory(cat){ return CAT_RU[cat]?cat:'symptom'; }
@@ -2427,10 +2443,18 @@ async function collectBugReport(){
 document.getElementById('btn-bug-report').onclick=collectBugReport;
 
 /* ───────────────────────── SHARED POPOVER MENU ───────────────────────── */
-let _popoverCloseHandler=null;
 function showPopoverMenu(anchorEl,items){
   closePopoverMenu();
   const rect=anchorEl.getBoundingClientRect();
+  // Полноэкранная невидимая подложка ловит любой тап мимо меню и закрывает его.
+  // Раньше закрытие висело на click-слушателе на document — но множество элементов
+  // приложения вызывают e.stopPropagation(), и тап по ним никогда не долетал до
+  // document, из-за чего меню могло «залипать» открытым. Подложка перехватывает
+  // клик раньше любого такого элемента снизу, независимо от их обработчиков.
+  const backdrop=document.createElement('div');
+  backdrop.id='active-qmenu-backdrop';
+  backdrop.style.cssText='position:fixed;inset:0;z-index:89;background:transparent';
+  backdrop.onclick=closePopoverMenu;
   const menu=document.createElement('div');
   menu.className='qmenu'; menu.id='active-qmenu';
   items.forEach(it=>{
@@ -2439,18 +2463,17 @@ function showPopoverMenu(anchorEl,items){
     b.onclick=(e)=>{ e.stopPropagation(); closePopoverMenu(); it.onClick(); };
     menu.appendChild(b);
   });
+  document.body.appendChild(backdrop);
   document.body.appendChild(menu);
   const mw=menu.offsetWidth,mh=menu.offsetHeight;
   let top=rect.bottom+6,left=rect.left;
   if(left+mw>window.innerWidth-8) left=window.innerWidth-mw-8;
   if(top+mh>window.innerHeight-8) top=rect.top-mh-6;
   menu.style.top=Math.max(8,top)+'px'; menu.style.left=Math.max(8,left)+'px';
-  _popoverCloseHandler=(e)=>{ if(!menu.contains(e.target)) closePopoverMenu(); };
-  setTimeout(()=>{ if(_popoverCloseHandler) document.addEventListener('click',_popoverCloseHandler); },0);
 }
 function closePopoverMenu(){
   const m=document.getElementById('active-qmenu'); if(m) m.remove();
-  if(_popoverCloseHandler){ document.removeEventListener('click',_popoverCloseHandler); _popoverCloseHandler=null; }
+  const b=document.getElementById('active-qmenu-backdrop'); if(b) b.remove();
 }
 
 /* ───────────────────────── SHARED EMOJI PANEL (превью + размер + стиль + категории) ───────────────────────── */
@@ -2578,7 +2601,7 @@ window.Dashboard=(function(){
         thumbBox.innerHTML=`<div class="w-full h-full flex items-center justify-center"><span class="material-symbols-outlined text-secondary text-3xl">${meta.icon}</span></div>`;
       }
       const info=document.createElement('div'); info.className='flex-1 min-w-0';
-      info.innerHTML=`<p class="text-base text-on-surface truncate">${esc(r.title||'')}</p><p class="text-xs text-on-surface-variant mt-1 flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">${meta.icon}</span>${meta.label} · ${dt}</p>`;
+      info.innerHTML=`<p class="text-base text-on-surface truncate">${esc(toSentenceCase(r.title)||'')}</p><p class="text-xs text-on-surface-variant mt-1 flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">${meta.icon}</span>${meta.label} · ${dt}</p>`;
       const delBtn=document.createElement('button'); delBtn.className='p-2 text-on-surface-variant hover:text-error';
       delBtn.innerHTML='<span class="material-symbols-outlined text-[18px]">delete</span>';
       delBtn.onclick=(e)=>{
@@ -2757,35 +2780,40 @@ window.Projects=(function(){
   // Карточка списка: обложка слева, название/категория/тип/дата справа, действия справа
   function buildListCard(p,showAccent){
     const card=document.createElement('div');
-    card.className='glass-card rounded-2xl p-md flex items-center gap-3 border border-white/5';
+    card.className='relative glass-card rounded-2xl border border-white/5 overflow-hidden min-h-[104px] flex items-stretch';
     if(showAccent) card.style.boxShadow='inset 3px 0 0 0 '+catAccentColor(p.category);
     const cnt=slideCount(p);
     const histCount=Array.isArray(p.history)?p.history.length:0;
+    // Обложка — на всю высоту карточки, прижата к левому краю, с плавным затуханием
+    // прозрачности вправо (маска), чтобы вливаться в фон карточки, а не резать его.
+    const thumbW=104;
     const thumbBox=document.createElement('div');
-    thumbBox.className='w-14 h-14 rounded-xl flex-shrink-0 overflow-hidden bg-surface-container-highest relative';
+    thumbBox.className='absolute left-0 top-0 bottom-0 overflow-hidden bg-surface-container-highest flex items-center justify-center';
+    thumbBox.style.cssText=`width:${thumbW}px;-webkit-mask-image:linear-gradient(to right,#000 55%,transparent 100%);mask-image:linear-gradient(to right,#000 55%,transparent 100%)`;
     const frameEl=makeRecentThumb(p.payload);
     if(frameEl){
       const fS=fmtSize((p.payload&&p.payload.format)||p.format||'post');
-      frameEl.style.transform=`scale(${56/fS.w})`; frameEl.style.transformOrigin='top left';
+      const scale=Math.max(thumbW,104)/fS.w;
+      frameEl.style.transform=`scale(${scale})`; frameEl.style.transformOrigin='center';
       thumbBox.appendChild(frameEl);
     }else{
-      thumbBox.innerHTML=`<div class="w-full h-full flex items-center justify-center"><span class="material-symbols-outlined text-secondary text-xl">draft</span></div>`;
+      thumbBox.innerHTML=`<span class="material-symbols-outlined text-secondary text-xl">draft</span>`;
     }
     const info=document.createElement('div');
-    info.className='min-w-0 flex-1 cursor-pointer'; info.dataset.open=p.uuid;
+    info.className='min-w-0 flex-1 cursor-pointer py-3 pr-12 flex flex-col justify-center gap-0.5';
+    info.style.paddingLeft=(thumbW*0.62)+'px'; // текст начинается после плотной части обложки, до полного затухания
+    info.dataset.open=p.uuid;
     info.innerHTML=`
-        <p class="text-on-surface-variant font-label-sm truncate uppercase tracking-wide text-[10px] opacity-80">${CAT_RU[p.category]||p.category||''} · ${FMT_RU[p.format]||p.format||''}</p>
-        <h3 class="font-headline-md text-base truncate text-on-surface flex items-center gap-1.5">
-          <span class="truncate">${esc(p.title||'Без названия')}</span>
-          ${p.isAuto?'<span class="shrink-0 text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-primary/15 text-primary font-label-sm">авто</span>':''}
-          ${p.published?'<span class="shrink-0 text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-500 font-label-sm flex items-center gap-0.5"><span class="material-symbols-outlined text-[10px]">check_circle</span>выложено</span>':''}
-        </h3>
-        <p class="text-on-surface-variant text-[11px] opacity-70">${fmtDate(p.updated_at)} · ${cnt} сл.${histCount?' · '+histCount+' верс.':''}</p>`;
-    const actions=document.createElement('div');
-    actions.className='flex gap-1 shrink-0 items-center';
+        <p class="text-on-surface-variant font-label-sm truncate text-[10px] opacity-80">${esc(toSentenceCase(CAT_RU[p.category]||p.category||''))} · ${esc(toSentenceCase(FMT_RU[p.format]||p.format||''))}</p>
+        <h3 class="font-headline-md text-base text-on-surface leading-snug" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(toSentenceCase(p.title)||'Без названия')}</h3>
+        <div class="flex items-center gap-1.5 flex-wrap">
+          ${p.isAuto?'<span class="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-primary/15 text-primary font-label-sm">Авто</span>':''}
+          ${p.published?'<span class="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-500 font-label-sm flex items-center gap-0.5"><span class="material-symbols-outlined text-[10px]">check_circle</span>Выложено</span>':''}
+          <span class="text-on-surface-variant text-[11px] opacity-70">${fmtDate(p.updated_at)} · ${cnt} сл.${histCount?' · '+histCount+' верс.':''}</span>
+        </div>`;
     const menuBtn=document.createElement('button');
     menuBtn.title='Действия';
-    menuBtn.className='p-2 rounded-full glass-card text-on-surface-variant hover:opacity-80 active:scale-95';
+    menuBtn.className='absolute top-2 right-2 p-2 rounded-full glass-card text-on-surface-variant hover:opacity-80 active:scale-95';
     menuBtn.innerHTML='<span class="material-symbols-outlined text-[18px]">more_vert</span>';
     menuBtn.onclick=(e)=>{
       e.stopPropagation();
@@ -2801,8 +2829,7 @@ window.Projects=(function(){
       }});
       showPopoverMenu(menuBtn,items);
     };
-    actions.appendChild(menuBtn);
-    card.append(thumbBox,info,actions);
+    card.append(thumbBox,info,menuBtn);
     return card;
   }
   // Карточка сетки: обложка на весь тайл, категория/тип чипом сверху, название затемнённой подписью снизу
@@ -2824,15 +2851,15 @@ window.Projects=(function(){
     }
     const chip=document.createElement('div');
     chip.className='absolute top-1.5 left-1.5 right-1.5 flex items-center justify-between gap-1';
-    chip.innerHTML=`<span class="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-black/50 text-white truncate">${esc(CAT_RU[p.category]||p.category||'')}</span>
+    chip.innerHTML=`<span class="text-[9px] px-1.5 py-0.5 rounded-full bg-black/50 text-white truncate">${esc(toSentenceCase(CAT_RU[p.category]||p.category||''))}</span>
         <span class="flex items-center gap-1 shrink-0">
         ${p.published?'<span class="material-symbols-outlined text-[14px]" style="color:#4ade80">check_circle</span>':''}
-        ${p.isAuto?'<span class="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-primary/80 text-on-primary">авто</span>':''}
+        ${p.isAuto?'<span class="text-[9px] px-1.5 py-0.5 rounded-full bg-primary/80 text-on-primary">Авто</span>':''}
         </span>`;
     const caption=document.createElement('div');
     caption.className='absolute bottom-0 left-0 right-0 p-2 pt-6 bg-gradient-to-t from-black/75 to-transparent';
-    caption.innerHTML=`<p class="text-white text-[12px] font-label-md truncate">${esc(p.title||'Без названия')}</p>
-        <p class="text-white/70 text-[10px] truncate">${FMT_RU[p.format]||p.format||''} · ${slideCount(p)} сл.</p>`;
+    caption.innerHTML=`<p class="text-white text-[12px] font-label-md leading-snug" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(toSentenceCase(p.title)||'Без названия')}</p>
+        <p class="text-white/70 text-[10px] truncate">${esc(toSentenceCase(FMT_RU[p.format]||p.format||''))} · ${slideCount(p)} сл.</p>`;
     const menuBtn=document.createElement('button');
     menuBtn.className='absolute top-1.5 right-1.5 p-1 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity';
     menuBtn.innerHTML='<span class="material-symbols-outlined text-[16px]">more_vert</span>';
@@ -4701,6 +4728,7 @@ html.${id} #bottom-nav,html.${id} #editor-subnav{background:${navBg} !important;
 html.${id} .emoji-picker,html.${id} .qmenu,html.${id} #save-modal>div,html.${id} #qs-modal>div,
 html.${id} #cap-tpl-modal>div,html.${id} #quick-insert-modal>div,html.${id} #emoji-panel-modal>div,
 html.${id} #tpl-modal>div,html.${id} #dl-result-modal>div,html.${id} #dl-all-choice-modal>div{background:${bg} !important;color:${textMain}}
+html.${id} .qmenu-item{color:${textMain} !important}
 `;
   }
 
