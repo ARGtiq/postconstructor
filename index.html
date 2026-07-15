@@ -1257,7 +1257,7 @@ const CAT_PALETTES={
 /* Версия приложения — показывается внизу Настроек. Бампать вручную при
    каждой значимой правке (следующий за этим сообщением коммит и все
    последующие) — формат MAJOR.MINOR.PATCH, дата для ориентира. */
-const APP_VERSION='1.3.1'; // 2026-07-15 — фикс popover-меню (не закрывалось), контраст текста меню, редизайн карточек проектов
+const APP_VERSION='1.3.2'; // 2026-07-15 — фикс наложения текста на обложку в карточках проектов
 const CAT_RU={symptom:'Симптом/Диагноз',myth:'Разбор мифа',prevent:'Профилактика/Чеклист',
   habit:'Привычка/Совет',delicate:'Деликатные темы',qa:'Вопрос-ответ',
   personal:'Личное/О враче',review:'Отзыв',oncology:'Онкология'};
@@ -2801,7 +2801,7 @@ window.Projects=(function(){
     }
     const info=document.createElement('div');
     info.className='min-w-0 flex-1 cursor-pointer py-3 pr-12 flex flex-col justify-center gap-0.5';
-    info.style.paddingLeft=(thumbW*0.62)+'px'; // текст начинается после плотной части обложки, до полного затухания
+    info.style.paddingLeft=(thumbW+14)+'px'; // отступ ПОСЛЕ обложки целиком — текст не наезжает на картинку
     info.dataset.open=p.uuid;
     info.innerHTML=`
         <p class="text-on-surface-variant font-label-sm truncate text-[10px] opacity-80">${esc(toSentenceCase(CAT_RU[p.category]||p.category||''))} · ${esc(toSentenceCase(FMT_RU[p.format]||p.format||''))}</p>
