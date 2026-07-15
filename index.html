@@ -1257,7 +1257,7 @@ const CAT_PALETTES={
 /* Версия приложения — показывается внизу Настроек. Бампать вручную при
    каждой значимой правке (следующий за этим сообщением коммит и все
    последующие) — формат MAJOR.MINOR.PATCH, дата для ориентира. */
-const APP_VERSION='1.4.0'; // 2026-07-15 — play-кнопка в canvas-экспорте, симметричная обводка, отступ от текста; фикс клика на загрузку фото
+const APP_VERSION='1.5.0'; // 2026-07-15 — симметричная подсветка текста, дефолтный центр-слайд для рилс/сторис, синк при сворачивании, убрано слово "Далее:"
 const CAT_RU={symptom:'Симптом/Диагноз',myth:'Разбор мифа',prevent:'Профилактика/Чеклист',
   habit:'Привычка/Совет',delicate:'Деликатные темы',qa:'Вопрос-ответ',
   personal:'Личное/О враче',review:'Отзыв',oncology:'Онкология'};
@@ -1293,8 +1293,8 @@ function parseInlineMarkdown(text,opts){
     .replace(/==(.*?)==/g,(m,w)=>{
       const hlc=hl&&hl!=='none'?hl:'rgba(196,122,90,.35)';
       const r=_hlRadius(hlShape,base);
-      const bo=border?`box-shadow:inset 0 0 0 1.5px ${_hlBorderColor(hlc,borderColor)};`:'';
-      return `<span style="background:${hlc};padding:4px 7px 2px;border-radius:${r}px;display:inline;${bo}">${w}</span>`;
+      const bo=border?`box-shadow:inset 0 0 0 2px ${_hlBorderColor(hlc,borderColor)};`:'';
+      return `<span style="background:${hlc};padding:4px 7px;border-radius:${r}px;display:inline;${bo}">${w}</span>`;
     }).replace(/\n/g,'<br>');
   return s;
 }
@@ -1304,8 +1304,8 @@ function mdToHtml(t,color,highlight,border,borderColor,hlShape){
   if(color&&color!=='auto') wrapped=`<span style="color:${color}">${s}</span>`;
   if(highlight&&highlight!=='none'&&!s.includes('style="background:')){
     const r=_hlRadius(hlShape,18);
-    const boBlock=border?`box-shadow:inset 0 0 0 1.5px ${_hlBorderColor(highlight,borderColor)};`:'';
-    wrapped=`<span style="background:${highlight};padding:5px 10px 3px;border-radius:${r}px;${boBlock};display:inline">${wrapped}</span>`;
+    const boBlock=border?`box-shadow:inset 0 0 0 2px ${_hlBorderColor(highlight,borderColor)};`:'';
+    wrapped=`<span style="background:${highlight};padding:5px 10px;border-radius:${r}px;${boBlock};display:inline">${wrapped}</span>`;
   }
   return wrapped;
 }
@@ -1947,8 +1947,18 @@ const Sync=(()=>{
     document.removeEventListener('visibilitychange',_onVisible);
   }
   function _onVisible(){
-    // Вернулись на вкладку — досрочно подтягиваем, что накопилось на другом устройстве
-    if(!document.hidden&&user) syncNow().catch(e=>notifyStatus('Ошибка синхронизации: '+e.message));
+    if(!user) return;
+    if(!document.hidden){
+      // Вернулись на вкладку — досрочно подтягиваем, что накопилось на другом устройстве
+      syncNow().catch(e=>notifyStatus('Ошибка синхронизации: '+e.message));
+    }else{
+      // Уходим с вкладки/сворачиваем приложение — отправляем всё, что накопилось
+      // локально (шаблоны, темы, быстрые вставки, расписание), не дожидаясь
+      // ни ручного «Обновить сейчас», ни следующего цикла раз в 90с — иначе
+      // изменения, сделанные прямо перед сворачиванием, рисковали не долететь
+      // до сервера вовсе.
+      syncBlobs().catch(()=>{});
+    }
   }
   // Реакция на локальные изменения (save/remove в Storage) — отправляем на сервер
   // с задержкой, чтобы не слать запрос на каждую мелкую правку по отдельности.
@@ -1960,12 +1970,27 @@ const Sync=(()=>{
             .catch(e=>notifyStatus('Ошибка отправки: '+e.message));
     },PUSH_DEBOUNCE_MS);
   });
+  // То же самое, но для «мелких» данных вне Storage (недавнее, расписание, шаблоны,
+  // кастомные темы, быстрые вставки) — раньше они ждали периодического цикла
+  // (раз в 90с, и то только пока вкладка активна) или ручного «Обновить сейчас».
+  // Если человек создал тему и сразу свернул телефон — она просто не успевала
+  // уйти на сервер. Теперь любое изменение этих данных запускает отправку сразу
+  // (с той же защитой от спама частыми правками).
+  let blobPushDebounce=null;
+  function notifyBlobChange(){
+    if(!isConfigured()||!user) return;
+    clearTimeout(blobPushDebounce);
+    blobPushDebounce=setTimeout(()=>{
+      syncBlobs().then(()=>{ lastSyncAt=Date.now(); notifyStatus('Синхронизировано'); })
+                 .catch(e=>notifyStatus('Ошибка отправки: '+e.message));
+    },PUSH_DEBOUNCE_MS);
+  }
   // Пробуем поднять клиент сразу при загрузке страницы, если ключи уже сохранены.
   // Если сессия уже была (Magic Link авторизует до перезагрузки) — auth-колбэк выше
   // сам запустит первый синк и фоновый цикл.
   ensureClient();
   function lastSync(){ return lastSyncAt; }
-  return { isConfigured, login, logout, currentUser, syncNow, saveConfig, clearConfig, getConfig, lastSync };
+  return { isConfigured, login, logout, currentUser, syncNow, saveConfig, clearConfig, getConfig, lastSync, notifyBlobChange };
 })();
 window.Sync=Sync;
 
@@ -2311,7 +2336,7 @@ function showView(name){
     const nextLabel=document.getElementById('sub-nav-next-label');
     const nextIcon=document.getElementById('sub-nav-next-icon');
     const isLast=idx===STEP_ORDER.length-1;
-    nextLabel.textContent=isLast?'Готово':'Далее: '+STEP_LABELS[STEP_ORDER[idx+1]];
+    nextLabel.textContent=isLast?'Готово':STEP_LABELS[STEP_ORDER[idx+1]];
     nextIcon.textContent=isLast?'home':'arrow_forward'; // на последнем шаге «Далее» превращается в выход на главный экран
   }
   window.scrollTo(0,0);
@@ -2679,8 +2704,20 @@ window.Dashboard=(function(){
     document.querySelectorAll('#da-format-picker [data-fmt]').forEach(btn=>{
       btn.addEventListener('click',()=>{
         format=btn.dataset.fmt;
-        slides=[]; current=0;
         setCurrentProjectUuid(null); // новый пост — не продолжение предыдущего проекта
+        if(format==='reel'||format==='story'){
+          // Рилс/Сторис — сразу один слайд-обложка на основе выбранной категории
+          // (эмодзи/цвет фона), с выравниванием по центру: для вертикальных
+          // форматов текст посередине читается лучше, чем «прижатый» к низу по
+          // умолчанию для постов.
+          const tpl=CAT_TEMPLATES[category]&&CAT_TEMPLATES[category][0];
+          const cover=tpl?JSON.parse(JSON.stringify(tpl)):defSlide({type:'cover'});
+          cover.align='center'; cover.vAlign='center';
+          slides=[defSlide(cover)];
+        }else{
+          slides=[];
+        }
+        current=0;
         _openImportOnEnter=true;
         saveState();
         showView('structure');
@@ -4126,12 +4163,12 @@ window.Publish=(function(){
     else if(align==='right') startX=x-total;
     else startX=x;
     const anyInlineHl=tokens.some(t=>t.hl&&t.text.trim());
-    const padTop=baseFontPx*0.16, padBottom=baseFontPx*0.3;
+    const padTop=baseFontPx*0.22, padBottom=baseFontPx*0.22;
     function fillHlRect(rx,rw,fillColor){
       const r=_hlRadius(hlShape,baseFontPx);
       drawRoundedRectPath(ctx,rx,y-padTop,rw,baseFontPx*1.05+padTop+padBottom,r);
       ctx.save(); ctx.fillStyle=fillColor; ctx.fill();
-      if(border){ ctx.strokeStyle=_hlBorderColor(fillColor,borderColor); ctx.lineWidth=Math.max(1,baseFontPx*0.035); ctx.stroke(); }
+      if(border){ ctx.strokeStyle=_hlBorderColor(fillColor,borderColor); ctx.lineWidth=Math.max(1.5,baseFontPx*0.05); ctx.stroke(); }
       ctx.restore();
     }
     if(anyInlineHl){
@@ -4713,7 +4750,7 @@ window.Settings=(function(){
      для light/ios, и инъектируется в <style id="custom-theme-style">. */
   const CUSTOM_THEMES_KEY='garipov_custom_themes_v1';
   function getCustomThemes(){ try{ return JSON.parse(localStorage.getItem(CUSTOM_THEMES_KEY)||'[]'); }catch(e){ return []; } }
-  function saveCustomThemes(arr){ try{ localStorage.setItem(CUSTOM_THEMES_KEY,JSON.stringify(arr)); }catch(e){} }
+  function saveCustomThemes(arr){ try{ localStorage.setItem(CUSTOM_THEMES_KEY,JSON.stringify(arr)); }catch(e){} if(window.Sync&&Sync.notifyBlobChange) Sync.notifyBlobChange(); }
   function themeIdOf(t){
     const base=(t.id||t.name||'theme').toString().replace(/[^a-z0-9]/gi,'').toLowerCase();
     return 'custom-'+(base||'x'+Math.abs((t.name||'').split('').reduce((a,c)=>a+c.charCodeAt(0),0)));
