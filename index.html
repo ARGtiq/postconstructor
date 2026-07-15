@@ -1257,7 +1257,7 @@ const CAT_PALETTES={
 /* Версия приложения — показывается внизу Настроек. Бампать вручную при
    каждой значимой правке (следующий за этим сообщением коммит и все
    последующие) — формат MAJOR.MINOR.PATCH, дата для ориентира. */
-const APP_VERSION='1.3.2'; // 2026-07-15 — фикс наложения текста на обложку в карточках проектов
+const APP_VERSION='1.3.3'; // 2026-07-15 — точный cover-масштаб обложки под реальную высоту карточки, fallback заголовка в Недавнем
 const CAT_RU={symptom:'Симптом/Диагноз',myth:'Разбор мифа',prevent:'Профилактика/Чеклист',
   habit:'Привычка/Совет',delicate:'Деликатные темы',qa:'Вопрос-ответ',
   personal:'Личное/О враче',review:'Отзыв',oncology:'Онкология'};
@@ -2601,7 +2601,8 @@ window.Dashboard=(function(){
         thumbBox.innerHTML=`<div class="w-full h-full flex items-center justify-center"><span class="material-symbols-outlined text-secondary text-3xl">${meta.icon}</span></div>`;
       }
       const info=document.createElement('div'); info.className='flex-1 min-w-0';
-      info.innerHTML=`<p class="text-base text-on-surface truncate">${esc(toSentenceCase(r.title)||'')}</p><p class="text-xs text-on-surface-variant mt-1 flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">${meta.icon}</span>${meta.label} · ${dt}</p>`;
+      const displayTitle=toSentenceCase(r.title)||deriveTitleFromSlides((r.snapshot&&r.snapshot.slides)||[],CAT_RU[r.snapshot&&r.snapshot.category]||'')||'Без названия';
+      info.innerHTML=`<p class="text-base text-on-surface truncate">${esc(displayTitle)}</p><p class="text-xs text-on-surface-variant mt-1 flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">${meta.icon}</span>${meta.label} · ${dt}</p>`;
       const delBtn=document.createElement('button'); delBtn.className='p-2 text-on-surface-variant hover:text-error';
       delBtn.innerHTML='<span class="material-symbols-outlined text-[18px]">delete</span>';
       delBtn.onclick=(e)=>{
@@ -2788,13 +2789,17 @@ window.Projects=(function(){
     // прозрачности вправо (маска), чтобы вливаться в фон карточки, а не резать его.
     const thumbW=104;
     const thumbBox=document.createElement('div');
-    thumbBox.className='absolute left-0 top-0 bottom-0 overflow-hidden bg-surface-container-highest flex items-center justify-center';
+    thumbBox.className='absolute left-0 top-0 bottom-0 overflow-hidden bg-surface-container-highest flex items-center justify-center pr-cover-box';
     thumbBox.style.cssText=`width:${thumbW}px;-webkit-mask-image:linear-gradient(to right,#000 55%,transparent 100%);mask-image:linear-gradient(to right,#000 55%,transparent 100%)`;
     const frameEl=makeRecentThumb(p.payload);
     if(frameEl){
       const fS=fmtSize((p.payload&&p.payload.format)||p.format||'post');
-      const scale=Math.max(thumbW,104)/fS.w;
-      frameEl.style.transform=`scale(${scale})`; frameEl.style.transformOrigin='center';
+      // Реальная высота карточки известна только после того, как она попадёт в DOM
+      // (зависит от того, влез ли заголовок в 1 или 2 строки) — здесь временная
+      // оценка по ширине, точный расчёт «cover» на обе стороны — в fixCoverScale()
+      // ниже, вызывается после appendChild для всего списка разом.
+      frameEl.dataset.natW=fS.w; frameEl.dataset.natH=fS.h;
+      frameEl.style.transform=`scale(${thumbW/fS.w})`; frameEl.style.transformOrigin='center';
       thumbBox.appendChild(frameEl);
     }else{
       thumbBox.innerHTML=`<span class="material-symbols-outlined text-secondary text-xl">draft</span>`;
@@ -2833,6 +2838,21 @@ window.Projects=(function(){
     return card;
   }
   // Карточка сетки: обложка на весь тайл, категория/тип чипом сверху, название затемнённой подписью снизу
+  // Настоящая высота list-карточки известна только после того, как она в DOM
+  // (зависит от того, влез ли заголовок в 1 или 2 строки). Вызывается один раз
+  // после appendChild всего списка — досчитывает масштаб обложки так, чтобы она
+  // гарантированно покрывала всю фактическую высоту карточки (без пустот снизу
+  // на высоких карточках), не трогая ширину.
+  function fixCoverScale(container){
+    container.querySelectorAll('.pr-cover-box').forEach(box=>{
+      const frameEl=box.firstElementChild;
+      if(!frameEl||!frameEl.dataset.natW) return;
+      const natW=parseFloat(frameEl.dataset.natW), natH=parseFloat(frameEl.dataset.natH);
+      const boxH=box.clientHeight||104, boxW=box.clientWidth||104;
+      const scale=Math.max(boxW/natW,boxH/natH);
+      frameEl.style.transform=`scale(${scale})`;
+    });
+  }
   function buildGridCard(p,showAccent){
     const card=document.createElement('div');
     card.className='relative rounded-2xl overflow-hidden aspect-square bg-surface-container-highest border border-white/5 cursor-pointer group';
@@ -2929,6 +2949,7 @@ window.Projects=(function(){
       sorted.forEach(p=>wrap.appendChild(build(p,true)));
       list.appendChild(wrap);
     }
+    if(prefs.view!=='grid') fixCoverScale(list); // grid-карточки квадратные, там проблемы разной высоты нет
   }
   function fmtDateFull(ts){
     if(!ts) return '';
